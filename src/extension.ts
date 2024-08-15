@@ -14,42 +14,41 @@ const SYSTEM_PROMPT = `You are an AI coding assistant integrated into a VS Code 
 6. You may include code comments, but they should be relevant, add value, and use correct code-commented syntax.
 7. Focus solely on code generation; do not engage in conversation or provide spurious explanations or examples.`;
 
-
-
 // Initialize the Anthropic client
 const anthropic = new Anthropic({
-	apiKey: ANTHROPIC_API_KEY, // Replace with your actual API key
+	apiKey: ANTHROPIC_API_KEY,
 });
 
-
-async function generateText(prompt: string): Promise<string> {
-	try {
-		const userPrompt = `Complete the following code, but do NOT repeat the provided code:
+async function* streamText(prompt: string): AsyncGenerator<string, void, unknown> {
+	const userPrompt = `Complete the following code, but do NOT repeat the provided code:
 
 ${prompt}
 
 Continue the code from here:`;
 
-		const message = await anthropic.messages.create({
+	try {
+		const stream = await anthropic.messages.create({
 			model: 'claude-3-5-sonnet-20240620',
 			max_tokens: 1000,
 			temperature: 0.7,
 			system: SYSTEM_PROMPT,
 			messages: [
 				{ role: 'user', content: userPrompt }
-			]
+			],
+			stream: true
 		});
 
-		let first = message.content[0] as TextBlock;
-		console.debug(JSON.stringify(first, null, 2));
-		return first.text;
+		for await (const chunk of stream) {
+			if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+				yield chunk.delta.text;
+			}
+		}
 	} catch (error) {
-		console.error('Error calling Claude API:', error);
+		console.error('Error streaming from Claude API:', error);
 		if (error instanceof Error) {
 			throw new Error(JSON.stringify({
 				message: error.message,
 				name: error.name,
-				// Add any other relevant error properties here
 			}, null, 2));
 		}
 		throw error;
@@ -66,19 +65,24 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
-		const position = editor.selection.active;
 		const document = editor.document;
+		const position = editor.selection.active;
 		const lineText = document.lineAt(position.line).text;
 		const textBeforeCursor = lineText.substring(0, position.character);
 
 		try {
-			const generatedText = await generateText(textBeforeCursor);
+			const textStream = streamText(textBeforeCursor);
+			let fullText = '';
 
-			await editor.edit(editBuilder => {
-				editBuilder.insert(position, generatedText);
-			});
+			for await (const textChunk of textStream) {
+				fullText += textChunk;
+				await editor.edit(editBuilder => {
+					const position = editor.selection.active;
+					editBuilder.insert(position, textChunk);
+				});
+			}
 
-			vscode.window.showInformationMessage('Text generated successfully');
+			vscode.window.showInformationMessage('Text generation completed');
 		} catch (error) {
 			let errorMessage = 'Failed to generate text';
 			if (error instanceof Error) {
