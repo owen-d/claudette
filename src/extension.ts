@@ -12,17 +12,7 @@ const SYSTEM_PROMPT = `You are an AI coding assistant integrated into a VS Code 
 4. Provide concise, efficient, and idiomatic code solutions.
 5. If the context is unclear, generate a sensible continuation that a developer might expect.
 6. You may include code comments, but they should be relevant, add value, and use correct code-commented syntax.
-7. Focus solely on code generation; do not engage in conversation or provide spurious explanations or examples.
-
-Encode responses into an <completion/> and <misc/> xml tags where 'completion' is the code to be added and 'misc' can include any miscellaneous information like examples/etc. This 'misc' section is not advised to be used, but available if necessary.
-
-Here's an example:
-<completion>function add(num1, num2) {
-  return num1 + num2;
-}</completion>
-<misc>// Example usage
-console.log(addNumbers(5, 7)); // Output: 12</misc>
-`;
+7. Focus solely on code generation; do not engage in conversation or provide spurious explanations or examples.`;
 
 
 
@@ -31,42 +21,6 @@ const anthropic = new Anthropic({
 	apiKey: ANTHROPIC_API_KEY, // Replace with your actual API key
 });
 
-// Define the ParsedCompletion type
-type ParsedCompletion = {
-	completion: string;
-	misc?: string;
-};
-
-class ParserError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = 'ParserError';
-	}
-}
-
-function parseResponse(response: string): ParsedCompletion {
-	// Regular expressions to match the completion and misc blocks
-	const completionRegex = /<completion>([\s\S]*?)<\/completion>/;
-	const miscRegex = /<misc>([\s\S]*?)<\/misc>/;
-
-	// Extract completion block
-	const completionMatch = response.match(completionRegex);
-	if (!completionMatch || !completionMatch[1]) {
-		throw new ParserError('No <completion> block found in the response');
-	}
-
-	const result: ParsedCompletion = {
-		completion: completionMatch[1].trim()
-	};
-
-	// Extract misc block (optional)
-	const miscMatch = response.match(miscRegex);
-	if (miscMatch && miscMatch[1]) {
-		result.misc = miscMatch[1].trim();
-	}
-
-	return result;
-}
 
 async function generateText(prompt: string): Promise<string> {
 	try {
@@ -87,9 +41,8 @@ Continue the code from here:`;
 		});
 
 		let first = message.content[0] as TextBlock;
-		let resp = parseResponse(first.text);
-		console.debug(JSON.stringify(resp, null, 2));
-		return resp.completion;
+		console.debug(JSON.stringify(first, null, 2));
+		return first.text;
 	} catch (error) {
 		console.error('Error calling Claude API:', error);
 		if (error instanceof Error) {
