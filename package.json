@@ -16,6 +16,10 @@
       {
         "command": "claudette.generateTextAtCursor",
         "title": "Claudette: Generate Text at Cursor"
+      },
+      {
+        "command": "claudette.refactorSelectedText",
+        "title": "Claudette: Refactor Selected Text"
       }
     ]
   },
