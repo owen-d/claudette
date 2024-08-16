@@ -14,12 +14,36 @@
   "contributes": {
     "commands": [
       {
-        "command": "claudette.generateTextAtCursor",
-        "title": "Claudette: Generate Text at Cursor"
+        "command": "claudette.generateWith20LinesContext",
+        "title": "Claudette: Generate at cursor with 20 Lines Context"
       },
       {
-        "command": "claudette.refactorSelectedText",
-        "title": "Claudette: Refactor Selected Text"
+        "command": "claudette.generateWith50LinesContext",
+        "title": "Claudette: Generate at cursor with 50 Lines Context"
+      },
+      {
+        "command": "claudette.generateWith100LinesContext",
+        "title": "Claudette: Generate at cursor with 100 Lines Context"
+      },
+      {
+        "command": "claudette.generateWithAllLinesContext",
+        "title": "Claudette: Generate at cursor with All Lines Context"
+      },
+      {
+        "command": "claudette.refactorWith20LinesContext",
+        "title": "Claudette: Refactor selection with 20 Lines Context"
+      },
+      {
+        "command": "claudette.refactorWith50LinesContext",
+        "title": "Claudette: Refactor selection with 50 Lines Context"
+      },
+      {
+        "command": "claudette.refactorWith100LinesContext",
+        "title": "Claudette: Refactor selection with 100 Lines Context"
+      },
+      {
+        "command": "claudette.refactorWithAllLinesContext",
+        "title": "Claudette: Refactor selection with All Lines Context"
       }
     ]
   },

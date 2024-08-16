@@ -19,24 +19,62 @@ const anthropic = new Anthropic({
 	apiKey: ANTHROPIC_API_KEY,
 });
 
+type LineDelta = number | 'all';
+type ActionType = 'selection' | 'cursor';
 
-function createAppendPrompt(context: string, code: string): string {
-	return `Given the following <context/> and <code/> blocks complete the <code/> block but do NOT repeat the provided code. Additional instructions may be left for you in the comments:
-
-<context>${context}</context>
-<code>${code}</code>
-Generate code based on the above context and instructions, but remember to ONLY output code & code comments:`;
+// context may or may not include 
+function getContext(editor: vscode.TextEditor, lines: LineDelta): string {
+	const document = editor.document;
+	const pos = editor.selection.active;
+	if (lines === 'all') {
+		return document.getText();
+	}
+	const lineDelta = Math.min(lines, pos.line);
+	const from = pos.translate(-lineDelta, undefined).with(undefined, 0);
+	return document.getText(new vscode.Range(from, pos));
 }
 
-function createReplacePrompt(context: string, code: string, instruction?: string): string {
-	return `Given the following blocks, refactor or replace the <code/> block. You may use elements from the original code if appropriate. Additional instructions may be left for you in the comments:
+function getCodeToModify(editor: vscode.TextEditor, variant: ActionType): string {
+	const document = editor.document;
+	if (variant === 'selection') {
+		return document.getText(editor.selection);
+	}
 
-<context>${context}</context>
-${instruction !== undefined ? `<instruction>${instruction}</instruction>` : ''}
-<code>${code}</code>
-Generate the refactored code based on the above context and instructions, but remember to ONLY output code & code comments:`;
+	// otherwise, default to recent 5 lines
+	return getContext(editor, 5);
 }
 
+// // Function to create a prompt based on context and code
+// function createPrompt(context: string, code: string, variant: ActionType): string {
+// 	return `Given the following blocks, complete or refactor the <code/> block. You may use elements from the original code if appropriate.
+// 	If variant is 'selection', refactor the selection. If variant is 'cursor', continue the code but DO NOT repeat it's contents.
+
+// <context>${context}</context>
+// <variant>${variant}</variant>
+// <code>${code}</code>
+// Generate code based on the above context, but remember to ONLY output code & code comments:`;
+// }
+
+// Function to create a prompt based on context and code
+function createPrompt(context: string, code: string, actiontype: ActionType): string {
+	if (actiontype === "selection") {
+		return `Given the following blocks, refactor the selected code. You may use elements from the original code if appropriate.
+<context>${context}</context>
+<code>${code}</code>
+Remember, focus solely on code generation; do NOT engage in conversation, spurious explanations, or examples.
+Generate code based on the above context, but remember to ONLY output code & relevant comments:`;
+	} else if (actiontype === "cursor") {
+		return `Given the following blocks, continue the code but DO NOT repeat its contents.
+<context>${context}</context>
+<code>${code}</code>
+Remember, focus solely on code generation; do NOT engage in conversation, spurious explanations, or examples.
+Generate code based on the above context, but remember to ONLY output code & relevant comments:`;
+	} else {
+		throw new Error("Invalid action type");
+	}
+}
+
+// Function to stream text from Claude API
 async function* streamText(prompt: string): AsyncGenerator<string, void, unknown> {
 	try {
 		const stream = await anthropic.messages.create({
@@ -57,110 +95,69 @@ async function* streamText(prompt: string): AsyncGenerator<string, void, unknown
 		}
 	} catch (error) {
 		console.error('Error streaming from Claude API:', error);
-		if (error instanceof Error) {
-			throw new Error(JSON.stringify({
-				message: error.message,
-				name: error.name,
-			}, null, 2));
-		}
 		throw error;
 	}
 }
 
-async function generateAtCursor(editor: vscode.TextEditor) {
-	const position = editor.selection.active;
-	const document = editor.document;
-	const lineText = document.lineAt(position.line).text;
-	const textBeforeCursor = lineText.substring(0, position.character);
+// Function to generate and insert/replace code
+async function generateAndInsertCode(editor: vscode.TextEditor, history: LineDelta, mode: ActionType) {
+	const context = getContext(editor, history);
+	const codeToModify = getCodeToModify(editor, mode);
+	const prompt = createPrompt(context, codeToModify, mode);
+	console.debug(prompt);
 
 	try {
-		const textStream = streamText(createAppendPrompt("", textBeforeCursor));
-		let fullText = '';
+		const textStream = streamText(prompt);
+		let generatedText = '';
 
 		for await (const textChunk of textStream) {
-			fullText += textChunk;
-			await editor.edit(editBuilder => {
-				const position = editor.selection.active;
-				editBuilder.insert(position, textChunk);
-			});
-		}
-
-		vscode.window.showInformationMessage('Text generation completed');
-	} catch (error) {
-		let errorMessage = 'Failed to generate text';
-		if (error instanceof Error) {
-			errorMessage += ': ' + error.message;
-		}
-		vscode.window.showErrorMessage(errorMessage);
-	}
-}
-
-async function replaceSelectedText(editor: vscode.TextEditor, prompt: string) {
-	const document = editor.document;
-	const selection = editor.selection;
-
-	if (selection.isEmpty) {
-		vscode.window.showErrorMessage('No text selected for refactoring');
-		return;
-	}
-
-	const selectedText = document.getText(selection);
-	const textStream = streamText(createReplacePrompt("", selectedText, prompt));
-	let replacementText = '';
-
-	try {
-		for await (const textChunk of textStream) {
-			replacementText += textChunk;
+			generatedText += textChunk;
 		}
 
 		await editor.edit(editBuilder => {
-			editBuilder.replace(selection, replacementText);
+			if (mode === 'selection' && !editor.selection.isEmpty) {
+				editBuilder.replace(editor.selection, generatedText);
+			} else {
+				editBuilder.insert(editor.selection.active, generatedText);
+			}
 		});
 
-		vscode.window.showInformationMessage('Text refactoring completed');
+		vscode.window.showInformationMessage('Code generation completed');
 	} catch (error) {
-		let errorMessage = 'Failed to refactor text';
+		let errorMessage = 'Failed to generate code';
 		if (error instanceof Error) {
 			errorMessage += ': ' + error.message;
 		}
 		vscode.window.showErrorMessage(errorMessage);
 	}
 }
+
+// Create commands for each combination
+const contextOptions: LineDelta[] = [20, 50, 100, 'all'];
+const modeOptions: ActionType[] = ['cursor', 'selection'];
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Activating claudette extension');
 
-	let generateAtCursorCommand = vscode.commands.registerCommand('claudette.generateTextAtCursor', async () => {
-		const editor = vscode.window.activeTextEditor;
-		if (!editor) {
-			vscode.window.showErrorMessage('No active text editor');
-			return;
+	for (const lineCount of contextOptions) {
+		for (const mode of modeOptions) {
+			const prefix = mode === 'cursor' ? 'generate' : 'refactor';
+			const commandId = `claudette.${prefix}With${lineCount.toString().charAt(0).toUpperCase() + lineCount.toString().slice(1)}LinesContext`;
+			const commandHandler = vscode.commands.registerCommand(commandId, async () => {
+				const editor = vscode.window.activeTextEditor;
+				if (!editor) {
+					vscode.window.showErrorMessage('No active text editor');
+					return;
+				}
+
+				await generateAndInsertCode(editor, lineCount, mode);
+			});
+
+			context.subscriptions.push(commandHandler);
 		}
-
-		await generateAtCursor(editor);
-	});
-
-	let refactorSelectedCommand = vscode.commands.registerCommand('claudette.refactorSelectedText', async () => {
-		const editor = vscode.window.activeTextEditor;
-		if (!editor) {
-			vscode.window.showErrorMessage('No active text editor');
-			return;
-		}
-
-		const prompt = await vscode.window.showInputBox({
-			prompt: "Enter refactoring instructions",
-			placeHolder: "e.g., Optimize this code for performance"
-		});
-
-		if (prompt !== undefined) {
-			await replaceSelectedText(editor, prompt);
-		}
-	});
-
-	context.subscriptions.push(generateAtCursorCommand, refactorSelectedCommand);
+	}
 
 	console.log('Commands registered');
 }
-
 
 export function deactivate() { }
