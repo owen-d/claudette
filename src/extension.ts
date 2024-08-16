@@ -19,7 +19,6 @@ const anthropic = new Anthropic({
 	apiKey: ANTHROPIC_API_KEY,
 });
 
-type PromptType = 'append' | 'replace';
 
 function createAppendPrompt(context: string, code: string): string {
 	return `Given the following <context/> and <code/> blocks complete the <code/> block but do NOT repeat the provided code. Additional instructions may be left for you in the comments:
@@ -29,19 +28,16 @@ function createAppendPrompt(context: string, code: string): string {
 Generate code based on the above context and instructions, but remember to ONLY output code & code comments:`;
 }
 
-function createReplacePrompt(context: string, code: string): string {
-	return `Given the following <context/> and <code/> blocks, refactor or replace the <code/> block. You may use elements from the original code if appropriate. Additional instructions may be left for you in the comments:
+function createReplacePrompt(context: string, code: string, instruction?: string): string {
+	return `Given the following blocks, refactor or replace the <code/> block. You may use elements from the original code if appropriate. Additional instructions may be left for you in the comments:
 
 <context>${context}</context>
+${instruction !== undefined ? `<instruction>${instruction}</instruction>` : ''}
 <code>${code}</code>
 Generate the refactored code based on the above context and instructions, but remember to ONLY output code & code comments:`;
 }
 
-async function* streamText(promptType: PromptType, context: string = "", code: string): AsyncGenerator<string, void, unknown> {
-	const userPrompt = promptType === 'append'
-		? createAppendPrompt(context, code)
-		: createReplacePrompt(context, code);
-
+async function* streamText(prompt: string): AsyncGenerator<string, void, unknown> {
 	try {
 		const stream = await anthropic.messages.create({
 			model: 'claude-3-5-sonnet-20240620',
@@ -49,7 +45,7 @@ async function* streamText(promptType: PromptType, context: string = "", code: s
 			temperature: 0.7,
 			system: SYSTEM_PROMPT,
 			messages: [
-				{ role: 'user', content: userPrompt }
+				{ role: 'user', content: prompt }
 			],
 			stream: true
 		});
@@ -78,7 +74,7 @@ async function generateAtCursor(editor: vscode.TextEditor) {
 	const textBeforeCursor = lineText.substring(0, position.character);
 
 	try {
-		const textStream = streamText('append', "", textBeforeCursor);
+		const textStream = streamText(createAppendPrompt("", textBeforeCursor));
 		let fullText = '';
 
 		for await (const textChunk of textStream) {
@@ -109,7 +105,7 @@ async function replaceSelectedText(editor: vscode.TextEditor, prompt: string) {
 	}
 
 	const selectedText = document.getText(selection);
-	const textStream = streamText('replace', prompt, selectedText);
+	const textStream = streamText(createReplacePrompt("", selectedText, prompt));
 	let replacementText = '';
 
 	try {
