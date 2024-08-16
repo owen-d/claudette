@@ -15,7 +15,11 @@
     "commands": [
       {
         "command": "claudette.completeAtCursor",
-        "title": "Claudette: Generate at cursor with 20 Lines Context"
+        "title": "Claudette: Generate at cursor"
+      },
+      {
+        "command": "claudette.refactorSelection",
+        "title": "Claudette: Refactor selection"
       }
     ]
   },
