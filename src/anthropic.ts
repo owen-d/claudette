@@ -22,6 +22,7 @@ const anthropic = new Anthropic({
 
 // Streaming function
 export async function* streamText(prompt: string): AsyncGenerator<string, void, unknown> {
+  // console.debug(prompt)
   try {
     const stream = await anthropic.messages.create({
       model: 'claude-3-5-sonnet-20240620',

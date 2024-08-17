@@ -54,22 +54,6 @@ export class Action<A> {
   then<B>(next: Action<B>): Action<B> {
     return this.bind(() => next);
   }
-
-  // Recover from cancellation
-  recover(recoveryValue: A): Action<A> {
-    return new Action<A>(async (editor) => {
-      const result = await this.run(editor);
-      return result.type === 'cancelled' ? { type: 'success', value: recoveryValue } : result;
-    });
-  }
-
-  // Handle cancellation with a custom action
-  recoverWith(recoveryAction: Action<A>): Action<A> {
-    return new Action<A>(async (editor) => {
-      const result = await this.run(editor);
-      return result.type === 'cancelled' ? recoveryAction.execute(editor) : result;
-    });
-  }
 }
 
 // Helper functions

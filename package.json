@@ -15,12 +15,28 @@
   "contributes": {
     "commands": [
       {
-        "command": "claudette.completeAtCursor",
-        "title": "Claudette: Generate at cursor"
+        "command": "claudette.complete",
+        "title": "Claudette: Complete at cursor"
       },
       {
-        "command": "claudette.refactorSelection",
-        "title": "Claudette: Refactor selection"
+        "command": "claudette.completeFullContext",
+        "title": "Claudette: Complete at cursor w/ full context"
+      },
+      {
+        "command": "claudette.completeDynamicContext",
+        "title": "Claudette: Complete at cursor w/ user-supplied context"
+      },
+      {
+        "command": "claudette.replace",
+        "title": "Claudette: Replace selection"
+      },
+      {
+        "command": "claudette.replaceFullContext",
+        "title": "Claudette: Replace selection w/ full context"
+      },
+      {
+        "command": "claudette.replaceDynamicContext",
+        "title": "Claudette: Replace selection w/ user-supplied context"
       }
     ]
   },

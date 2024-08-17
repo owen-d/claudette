@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Action, pure, liftEditor, cancel, sequence, success } from './action';
+import { Action, pure, liftEditor, cancel, sequence, success, fail } from './action';
 import { CompletionType, createPrompt } from './prompt';
 import { streamText } from './anthropic';
 
@@ -24,12 +24,9 @@ const getLines = (contextLines: number | null) =>
 const completionContext = getRecentLines(5);
 
 
-const promptUser = (prompt: string, placeHolder?: string) =>
+const promptUser = (opts: vscode.InputBoxOptions) =>
 	liftEditor(
-		async (editor) => vscode.window.showInputBox({
-			prompt,
-			placeHolder,
-		})
+		async (editor) => vscode.window.showInputBox(opts)
 	).bind(x => x === undefined ? cancel<string>() : pure(x));
 
 const dispatchPrompt = (ctx: string, code: string, ty: CompletionType, instruction?: string) =>
@@ -46,16 +43,47 @@ const completeAtCursorDefinedContext = (contextLines: number | null) => {
 						editBuilder.insert(pos, chk);
 					});
 				}
-				vscode.window.showInformationMessage('Text generation completed');
 			}
 		));
 };
+
+// completeAtCursorDynamicContext prompts the user for the number of preceding lines
+// to inject in the context. It should look very similar to `completeAtCursorDefinedContext`,
+// but instead of using a fixed number of preceding context lines, it prompts the user for that value.
+const completeAtCursorDynamicContext = sequence([
+	promptUser({
+		prompt: 'Enter the number of preceding lines for context',
+		placeHolder: 'e.g., 10',
+	}),
+	completionContext
+])
+	.bind(([lineCount, code]) => {
+		const contextLines = parseInt(lineCount, 10);
+		if (isNaN(contextLines) || contextLines < 0) {
+			throw new Error(`invalid lines: ${contextLines}`); // Cancel if invalid input
+		}
+		return getLines(contextLines).bind(ctx => dispatchPrompt(ctx, code, 'cursor'));
+	})
+	.bind((stream) => liftEditor(
+		async editor => {
+			for await (const chk of stream) {
+				await editor.edit(editBuilder => {
+					const pos = editor.selection.active;
+					editBuilder.insert(pos, chk);
+				});
+			}
+		}
+	));
+
 
 const replaceSelectionDefinedContext = (contextLines: number | null) => {
 	return sequence([
 		getLines(contextLines),
 		completionContext,
-		promptUser('Enter refactoring instructions', 'e.g., Optimize this code for performance'),
+		promptUser({
+			prompt: 'Enter refactoring instructions',
+			placeHolder: 'e.g., Optimize this code for performance',
+		}),
 	])
 		.bind(([ctx, code, instruction]) => dispatchPrompt(ctx, code, 'cursor', instruction))
 		.bind((stream) => liftEditor(
@@ -71,33 +99,27 @@ const replaceSelectionDefinedContext = (contextLines: number | null) => {
 		));
 };
 
-// activations
 export function activate(context: vscode.ExtensionContext) {
-	context.subscriptions.push(
-		vscode.commands.registerCommand('claudette.completeAtCursor', async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (editor) {
-				const result = await completeAtCursorDefinedContext(20).execute(editor);
-				if (result.type === 'cancelled') {
-					vscode.window.showInformationMessage('Operation was cancelled');
-				} else {
-					vscode.window.showInformationMessage('Code completion finished');
-				}
-			}
-		})
-	);
+	// Register commands
+	const commands = [
+		{ name: 'claudette.complete', action: completeAtCursorDefinedContext(10) },
+		{ name: 'claudette.completeFullContext', action: completeAtCursorDefinedContext(null) },
+		{ name: 'claudette.completeDynamicContext', action: completeAtCursorDynamicContext },
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand('claudette.refactorSelection', async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (editor) {
-				const result = await replaceSelectionDefinedContext(20).execute(editor);
-				if (result.type === 'cancelled') {
-					vscode.window.showInformationMessage('Operation was cancelled');
-				} else {
-					vscode.window.showInformationMessage('Code completion finished');
+		{ name: 'claudette.replace', action: replaceSelectionDefinedContext(20) },
+		{ name: 'claudette.replaceFullContext', action: replaceSelectionDefinedContext(null) },
+	];
+
+	commands.forEach(cmd => {
+		context.subscriptions.push(
+			vscode.commands.registerCommand(cmd.name, async () => {
+				const editor = vscode.window.activeTextEditor;
+				if (editor) {
+					const result = await cmd.action.execute(editor);
+					const message = result.type === 'cancelled' ? 'Operation was cancelled' : 'Code completion finished';
+					vscode.window.showInformationMessage(message);
 				}
-			}
-		})
-	);
+			})
+		);
+	});
 }
