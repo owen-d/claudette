@@ -69,7 +69,7 @@ const replaceSelectionDefinedContext = (contextLines: number | null) => {
 				}
 			}
 		));
-}
+};
 
 // activations
 export function activate(context: vscode.ExtensionContext) {

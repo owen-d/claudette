@@ -1,5 +1,6 @@
 {
   "name": "claudette",
+  "repository": "github:owen-d/claudette",
   "displayName": "claudette",
   "description": "claude powered editor integration, DIY",
   "version": "0.0.1",
@@ -29,7 +30,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "pkg": "npx vsce package",
+    "publish": "npx vsce package && code --install-extension ./claudette-0.0.1.vsix"
   },
   "devDependencies": {
     "@types/axios": "^0.9.36",
