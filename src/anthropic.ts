@@ -20,8 +20,10 @@ const anthropic = new Anthropic({
   apiKey: ANTHROPIC_API_KEY,
 });
 
+export type TextStream = AsyncGenerator<string, void, unknown>;
+
 // Streaming function
-export async function* streamText(prompt: string): AsyncGenerator<string, void, unknown> {
+export async function* streamText(prompt: string): TextStream {
   // console.debug(prompt)
   try {
     const stream = await anthropic.messages.create({

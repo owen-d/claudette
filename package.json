@@ -37,7 +37,8 @@
       {
         "command": "claudette.replaceDynamicContext",
         "title": "Claudette: Replace selection w/ user-supplied context"
-      }
+      },
+      {}
     ]
   },
   "scripts": {
