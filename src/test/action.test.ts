@@ -16,15 +16,6 @@ describe('Action class', () => {
       expect(executionResult).toEqual(success(6));
     });
 
-    it('should work with flipped version (value applied to function)', async () => {
-      const addOne = pure((x: number) => x + 1);
-      const five = pure(5);
-
-      const flipped = five.apply(addOne);
-      const executionResult = await flipped.execute(mockEditor);
-
-      expect(executionResult).toEqual(success(6));
-    });
 
     it('should work with chained applications', async () => {
       const add = pure((x: number) => (y: number) => x + y);
@@ -42,16 +33,6 @@ describe('Action class', () => {
       const cancelled = new Action<number>(async () => ({ type: 'cancelled' }));
 
       const result = addOne.apply(cancelled);
-      const executionResult = await result.execute(mockEditor);
-
-      expect(executionResult).toEqual({ type: 'cancelled' });
-    });
-
-    it('should handle cancellation in flipped version', async () => {
-      const cancelled = new Action<(x: number) => number>(async () => ({ type: 'cancelled' }));
-      const five = pure(5);
-
-      const result = five.apply(cancelled);
       const executionResult = await result.execute(mockEditor);
 
       expect(executionResult).toEqual({ type: 'cancelled' });

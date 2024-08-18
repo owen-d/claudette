@@ -45,10 +45,6 @@ export class Action<A> {
 
   // Applicative apply operation (<*>) with cancellation support
   // base version
-  apply<B, C>(this: Action<(a: B) => C>, action: Action<B>): Action<C>;
-  // flipped version
-  apply<C>(f: Action<(a: A) => C>): Action<C>;
-  // apply<C, B = (a: A) => C>(f: Action<B>): Action<C>;
   apply<B, C>(this: Action<(a: B) => C>, action: Action<B>): Action<C> {
     return sequence(this, action).map(([f, g]) => f(g));
   }
@@ -56,6 +52,12 @@ export class Action<A> {
   // Convenience method for sequencing actions
   then<B>(next: Action<B>): Action<B> {
     return this.bind(() => next);
+  }
+
+  // Convenience method for buffering multiple actions together into
+  // a tuple.
+  and<B>(other: Action<B>): Action<[A, B]> {
+    return sequence(this, other);
   }
 
 }
