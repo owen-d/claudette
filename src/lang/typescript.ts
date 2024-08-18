@@ -37,6 +37,7 @@ export const showDefinitions = findDefinitions.bind(
 );
 
 export const lang = {
+  name: 'typescript',
   extension: 'ts',
   commands: [{
     name: 'findTSDefinitions',
