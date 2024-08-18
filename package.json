@@ -37,6 +37,10 @@
       {
         "command": "claudette.replaceDynamicContext",
         "title": "Claudette: Replace selection w/ user-supplied context"
+      },
+      {
+        "command": "claudette.findTSDefinitions",
+        "title": "Claudette: find ts defs"
       }
     ]
   },

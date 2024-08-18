@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Action, pure, liftEditor, cancel, sequence, success, fail } from './action';
 import { CompletionType, createPrompt } from './prompt';
 import { streamText, TextStream } from './anthropic';
+import * as langs from './lang/lib';
 
 
 const getSelectedCode: Action<string> =
@@ -108,25 +109,29 @@ const replaceSelectionDynamicContext = instructionPrompt
 export function activate(context: vscode.ExtensionContext) {
 	// Register commands
 	const commands = [
-		{ name: 'claudette.complete', action: completeAtCursorDefinedContext(10) },
-		{ name: 'claudette.completeFullContext', action: completeAtCursorDefinedContext(null) },
-		{ name: 'claudette.completeDynamicContext', action: completeAtCursorDynamicContext },
+		{ name: 'complete', action: completeAtCursorDefinedContext(10) },
+		{ name: 'completeFullContext', action: completeAtCursorDefinedContext(null) },
+		{ name: 'completeDynamicContext', action: completeAtCursorDynamicContext },
 
-		{ name: 'claudette.replace', action: replaceSelectionDefinedContext(20) },
-		{ name: 'claudette.replaceFullContext', action: replaceSelectionDefinedContext(null) },
-		{ name: 'claudette.replaceDynamicContext', action: replaceSelectionDynamicContext },
+		{ name: 'replace', action: replaceSelectionDefinedContext(20) },
+		{ name: 'replaceFullContext', action: replaceSelectionDefinedContext(null) },
+		{ name: 'replaceDynamicContext', action: replaceSelectionDynamicContext },
+
+		...langs.languages.flatMap(l => l.commands),
 	];
 
 	commands.forEach(cmd => {
 		context.subscriptions.push(
-			vscode.commands.registerCommand(cmd.name, async () => {
+			vscode.commands.registerCommand('claudette.' + cmd.name, async () => {
 				const editor = vscode.window.activeTextEditor;
 				if (editor) {
 					const result = await cmd.action.execute(editor);
-					const message = result.type === 'cancelled' ? 'Operation was cancelled' : 'Code completion finished';
-					vscode.window.showInformationMessage(message);
+					if (result.type === 'cancelled') {
+						vscode.window.showInformationMessage('Operation was cancelled');
+					}
 				}
 			})
 		);
 	});
+
 }
