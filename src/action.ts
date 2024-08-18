@@ -15,6 +15,7 @@ export function success<A>(a: A): ActionResult<A> {
   return { type: 'success', value: a };
 }
 
+
 export class Action<A> {
   constructor(private readonly run: (editor: vscode.TextEditor) => Promise<ActionResult<A>>) { }
 
@@ -41,22 +42,23 @@ export class Action<A> {
     });
   }
 
+
   // Applicative apply operation (<*>) with cancellation support
-  apply<B>(actionWithFunc: Action<(a: A) => B>): Action<B> {
-    return new Action<B>(async (editor) => {
-      const [resultA, resultF] = await Promise.all([this.run(editor), actionWithFunc.execute(editor)]);
-      if (resultA.type === 'cancelled' || resultF.type === 'cancelled') { return { type: 'cancelled' }; };
-      return { type: 'success', value: resultF.value(resultA.value) };
-    });
+  // base version
+  apply<B, C>(this: Action<(a: B) => C>, action: Action<B>): Action<C>;
+  // flipped version
+  apply<C>(f: Action<(a: A) => C>): Action<C>;
+  // apply<C, B = (a: A) => C>(f: Action<B>): Action<C>;
+  apply<B, C>(this: Action<(a: B) => C>, action: Action<B>): Action<C> {
+    return sequence(this, action).map(([f, g]) => f(g));
   }
 
   // Convenience method for sequencing actions
   then<B>(next: Action<B>): Action<B> {
     return this.bind(() => next);
   }
-}
 
-// Helper functions
+}
 
 export function pure<A>(a: A): Action<A> {
   return new Action(async () => ({ type: 'success', value: a }));
@@ -79,32 +81,24 @@ export function liftEditor<A>(f: (editor: vscode.TextEditor) => Promise<A>): Act
   });
 }
 
-// Sequence an array of actions
-export function sequence<A>(actions: Action<A>[]): Action<A[]> {
-  return new Action(async (editor) => {
-    return Promise.all(actions.map(action => action.execute(editor)))
-      .then(xs => {
-        let successes = xs.filter(x => x.type === 'success');
-        if (xs.length !== successes.length) {
-          return cancellation();
-        }
-
-        return success(successes.map(x => x.value));
-      })
-      ;
-  });
-
-}
-
 // Traverse an array with an action-returning function
 export function traverse<A, B>(arr: A[], f: (a: A) => Action<B>): Action<B[]> {
-  return sequence(arr.map(f));
+  return sequence(...arr.map(f));
 }
 
-const insertText = (text: string): Action<void> =>
-  liftEditor(async (editor) => {
-    await editor.edit(editBuilder => {
-      editBuilder.insert(editor.selection.active, text);
-    });
-  });
+type UnwrapAction<T> = T extends Action<infer U> ? U : never;
 
+export function sequence<T extends Action<any>[]>(
+  ...actions: [...T]
+): Action<{ [K in keyof T]: UnwrapAction<T[K]> }> {
+  return new Action(async (editor) => {
+    const results = await Promise.all(actions.map(action => action.execute(editor)));
+
+    if (results.some(result => result.type === 'cancelled')) {
+      return cancellation();
+    }
+
+    const values = results.map(result => (result as ActionResult<any> & { type: 'success' }).value);
+    return success(values as { [K in keyof T]: UnwrapAction<T[K]> });
+  });
+}

@@ -33,18 +33,18 @@ const dispatchPrompt = (ctx: string, code: string, ty: CompletionType, instructi
 	pure(streamText(createPrompt(ctx, code, ty, instruction)));
 
 const getStaticLinesAndCompletionContext = (contextLines: number | null, ty: CompletionType, instruction?: string) =>
-	sequence([getLines(contextLines), completionContext])
+	sequence(getLines(contextLines), completionContext)
 		.bind(([ctx, code]) => dispatchPrompt(ctx, code, ty, instruction));
 
 const getDynamicLinesAndCompletionContext = (ty: CompletionType, instruction?: string) =>
-	sequence([
+	sequence(
 		promptUser({
 			prompt: 'Enter the number of preceding lines for context',
 			placeHolder: 'e.g., 10',
 			value: '10',
 		}),
-		completionContext
-	])
+		completionContext,
+	)
 		.bind(([lineCount, code]) => {
 			const contextLines = parseInt(lineCount, 10);
 			if (isNaN(contextLines) || contextLines < 0) {
