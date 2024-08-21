@@ -30,8 +30,19 @@ const promptUser = (opts: vscode.InputBoxOptions) =>
 		async (editor) => vscode.window.showInputBox(opts)
 	).bind(x => x === undefined ? cancel<string>() : pure(x));
 
-const dispatchPrompt = (ctx: string, code: string, ty: CompletionType, instruction?: string) =>
-	pure(streamText(createPrompt(ctx, code, ty, instruction)));
+const dispatchPrompt = (ctx: string, code: string, ty: CompletionType, instruction?: string) => {
+	const prompt = createPrompt(ctx, code, ty, instruction);
+	console.debug(prompt);
+	return pure(streamText(prompt));
+};
+
+// Debug is is an action combinator which logs the argument
+const debug = <A>(x: Action<A>) =>
+	x.map(v => {
+		console.debug(v);
+		return v;
+	});
+
 
 const getStaticLinesAndCompletionContext = (contextLines: number | null, ty: CompletionType, instruction?: string) =>
 	sequence(getLines(contextLines), completionContext)
