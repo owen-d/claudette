@@ -12,12 +12,28 @@ const getCursor: Action<vscode.Position> =
 	liftEditor(async (editor) => editor.selection.active);
 
 const getAllLines = liftEditor(async (editor) => editor.document.getText());
+
+// get recent `n` lines in both directions from the cursor
 const getRecentLines = (n: number): Action<string> =>
-	getCursor.bind(pos => {
-		const lineDelta = Math.min(n, pos.line);
-		const from = pos.translate(-lineDelta, undefined).with(undefined, 0);
-		return liftEditor(async (editor) => editor.document.getText(new vscode.Range(from, pos)));
-	});
+	getCursor.bind(
+		pos =>
+			liftEditor(async (editor) => {
+				const fromDelta = Math.min(n, pos.line);
+				// clamp to min line
+				const from = pos.translate(-fromDelta, undefined).with(undefined, 0);
+				// clamp to max line
+				const toLine = Math.min(
+					n,
+					editor.document.lineCount - 1 + pos.line,
+				);
+				const to = pos.translate(
+					toLine,
+					editor.document.lineAt(toLine).text.length,
+				);
+				return editor.document.getText(new vscode.Range(from, to));
+			})
+	);
+
 const getLines = (contextLines: number | null) =>
 	contextLines === null ? getAllLines : getRecentLines(contextLines);
 
@@ -129,10 +145,12 @@ const completeWithLanguageDirContext = liftEditor(async editor => {
 export function activate(context: vscode.ExtensionContext) {
 	// Register commands
 	const commands = [
+		// completion
 		{ name: 'complete', action: completeAtCursorDefinedContext(10) },
 		{ name: 'completeFullContext', action: completeAtCursorDefinedContext(null) },
 		{ name: 'completeDynamicContext', action: completeAtCursorDynamicContext },
 
+		// refactoring
 		{ name: 'replace', action: replaceSelectionDefinedContext(20) },
 		{ name: 'replaceFullContext', action: replaceSelectionDefinedContext(null) },
 		{ name: 'replaceDynamicContext', action: replaceSelectionDynamicContext },
@@ -154,4 +172,3 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	});
 }
-

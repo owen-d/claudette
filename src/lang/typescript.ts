@@ -24,7 +24,7 @@ export const findDefinitions = liftEditor(async (editor) => {
 });
 
 
-
+// show definitions
 export const showDefinitions = findDefinitions.bind(
   text => liftEditor(
     async () => {
@@ -48,11 +48,30 @@ export const lang = {
   },
 };
 
-async function findTypeScriptFiles(folderPath: string): Promise<string[]> {
-  const files = await vscode.workspace.findFiles(
-    new vscode.RelativePattern(folderPath, '**/*.ts')
-  );
-  return files.map(file => file.fsPath);
+// findTypescriptFiles optionally supports a maxDepth param (0, default means only specified dir)
+async function findTypeScriptFiles(folderPath: string, maxDepth: number = 0): Promise<string[]> {
+  const files: string[] = [];
+  const queue: { path: string; depth: number }[] = [{ path: folderPath, depth: 0 }];
+
+  while (queue.length > 0) {
+    const { path: currentPath, depth } = queue.shift()!;
+
+    if (depth > maxDepth) continue;
+
+    const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(currentPath));
+
+    for (const [name, type] of entries) {
+      const fullPath = path.join(currentPath, name);
+
+      if (type === vscode.FileType.File && name.endsWith('.ts')) {
+        files.push(fullPath);
+      } else if (type === vscode.FileType.Directory) {
+        queue.push({ path: fullPath, depth: depth + 1 });
+      }
+    }
+  }
+
+  return files;
 }
 
 async function extractTypeScriptDefinitions(filePaths: string[]): Promise<TypeScriptDefinition[]> {
