@@ -106,6 +106,15 @@ const replaceSelectionDynamicContext = instructionPrompt
 	.bind(streamReplace);
 
 
+const completeWithLanguageDirContext = liftEditor(async editor => {
+	const lang = editor.document.languageId;
+	const resolver = langs.actions?.[lang].dirCtx;
+	if (resolver === undefined) {
+		throw new Error(`language ${lang} unsupported for context lookups`);
+	}
+});
+
+
 export function activate(context: vscode.ExtensionContext) {
 	// Register commands
 	const commands = [
@@ -133,5 +142,5 @@ export function activate(context: vscode.ExtensionContext) {
 			})
 		);
 	});
-
 }
+
