@@ -33,6 +33,10 @@
       {
         "command": "claudette.findTSDefinitions",
         "title": "Claudette: find ts defs"
+      },
+      {
+        "command": "claudette.findGoDefinitions",
+        "title": "Claudette: find go defs"
       }
     ]
   },

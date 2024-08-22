@@ -1,4 +1,5 @@
 import * as ts from './typescript';
+import * as go from './golang';
 import { Command } from '../types';
 import { Action } from '../action';
 
@@ -11,7 +12,7 @@ type Language = {
   },
 };
 
-export const languages: Language[] = [ts.lang];
+export const languages: Language[] = [ts.lang, go.lang];
 export const actions: Record<string, Language['actions']> = languages.reduce((acc, lang) => {
   return { ...acc, [lang.name]: lang.actions };
 }, {} as Record<string, Language['actions']>);
