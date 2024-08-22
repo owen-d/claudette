@@ -118,40 +118,47 @@ const streamReplace = (stream: TextStream) => liftEditor(
 	}
 );
 
+const languageDirContext = liftEditor(async editor => editor.document.languageId)
+	.bind(lang => {
+		const resolver = langs.actions?.[lang].dirCtx;
+		if (resolver === undefined) {
+			throw new Error(`language ${lang} unsupported for context lookups`);
+		}
+		return resolver;
+	});
+
 // ------------- Exposed functions -------------
 
 const completeAtCursorDefinedContext = (contextLines: number | null) =>
-	getLines('cursor', contextLines).bind(
-		([before, after]) => dispatchPrompt({
-			type: 'cursor',
-			beforeCursor: before,
-			afterCursor: after,
-		}),
-	).bind(streamAppend);
+	sequence(
+		getLines('cursor', contextLines),
+		languageDirContext,
+	)
+		.bind(
+			([[before, after], context]) => dispatchPrompt({
+				type: 'cursor',
+				beforeCursor: before,
+				afterCursor: after,
+				context,
+			}),
+		).bind(streamAppend);
 
 const replaceSelectionDefinedContext = (contextLines: number | null) =>
 	sequence(
 		instructionPrompt,
 		getLines('selection', contextLines),
 		liftEditor(async (editor) => (s: vscode.Selection) => editor.document.getText(s)).apply(getSelection),
+		languageDirContext,
 	).bind(
-		([instruction, [before, after], selection]) => dispatchPrompt({
+		([instruction, [before, after], selection, context]) => dispatchPrompt({
 			type: 'selection',
 			beforeSelection: before,
 			selection: selection,
 			afterSelection: after,
 			instruction,
+			context,
 		})
 	).bind(streamReplace);
-
-const completeWithLanguageDirContext = liftEditor(async editor => {
-	const lang = editor.document.languageId;
-	const resolver = langs.actions?.[lang].dirCtx;
-	if (resolver === undefined) {
-		throw new Error(`language ${lang} unsupported for context lookups`);
-	}
-});
-
 
 export function activate(context: vscode.ExtensionContext) {
 	// Register commands
@@ -181,3 +188,4 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	});
 }
+
