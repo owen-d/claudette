@@ -130,16 +130,17 @@ const completeAtCursorDefinedContext = (contextLines: number | null) =>
 	).bind(streamAppend);
 
 const replaceSelectionDefinedContext = (contextLines: number | null) =>
-
 	sequence(
+		instructionPrompt,
 		getLines('selection', contextLines),
 		liftEditor(async (editor) => (s: vscode.Selection) => editor.document.getText(s)).apply(getSelection),
 	).bind(
-		([[before, after], selection]) => dispatchPrompt({
+		([instruction, [before, after], selection]) => dispatchPrompt({
 			type: 'selection',
 			beforeSelection: before,
 			selection: selection,
 			afterSelection: after,
+			instruction,
 		})
 	).bind(streamReplace);
 
@@ -180,4 +181,3 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	});
 }
-
