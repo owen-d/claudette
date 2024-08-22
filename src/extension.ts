@@ -1,16 +1,17 @@
 import * as vscode from 'vscode';
 import { Action, pure, liftEditor, cancel, sequence, success, fail } from './action';
-import { CompletionType, createPrompt } from './prompt';
+import { CompletionType, createPrompt, PromptInput } from './prompt';
 import { streamText, TextStream } from './anthropic';
 import * as langs from './lang/lib';
 
-
-const getSelectedCode: Action<string> =
-	liftEditor(async (editor) => editor.document.getText(editor.selection));
+// default surrounding lines in each direction
+const DEFAULT_SURROUNDING_LINES = 25;
 
 const getCursor: Action<vscode.Position> =
 	liftEditor(async (editor) => editor.selection.active);
 
+const getSelection: Action<vscode.Selection> =
+	liftEditor(async (editor) => editor.selection);
 
 function clampPosition(position: vscode.Position, document: vscode.TextDocument): vscode.Position {
 	// Clamp line number
@@ -24,12 +25,12 @@ function clampPosition(position: vscode.Position, document: vscode.TextDocument)
 	return new vscode.Position(clampedLine, clampedCharacter);
 }
 
-const getRecentLines = (n: number): Action<string> =>
-	getCursor.bind(
-		pos =>
+const getSurroundingLines = (target: Action<vscode.Range>, n: number): Action<[string, string]> =>
+	target.bind(
+		r =>
 			liftEditor(async (editor) => {
-				const startLine = Math.max(0, pos.line - n);
-				const endLine = Math.min(editor.document.lineCount - 1, pos.line + n);
+				const startLine = Math.max(0, r.start.line - n);
+				const endLine = Math.min(editor.document.lineCount - 1, r.start.line + n);
 
 				const from = new vscode.Position(startLine, 0);
 				const to = new vscode.Position(endLine, editor.document.lineAt(endLine).text.length);
@@ -37,63 +38,62 @@ const getRecentLines = (n: number): Action<string> =>
 				const clampedFrom = clampPosition(from, editor.document);
 				const clampedTo = clampPosition(to, editor.document);
 
-				return editor.document.getText(new vscode.Range(clampedFrom, clampedTo));
+				return [
+					editor.document.getText(new vscode.Range(clampedFrom, r.start)),
+					editor.document.getText(new vscode.Range(r.end, clampedTo)),
+				];
 			})
 	);
 
-const getLines = (contextLines: number | null) =>
-	contextLines === null ? getAllLines : getRecentLines(contextLines);
 
-const getAllLines = liftEditor(async (editor) => editor.document.getText());
+// Updated getAllLines function to adhere to [before, after] cursor semantics
+const getAllLines = (target: Action<vscode.Range>): Action<[string, string]> =>
+	target.bind(
+		r =>
+			liftEditor(async (editor) => {
+				const firstLine = 0;
+				const lastLine = editor.document.lineCount - 1;
 
-// completionLines (used for completing the current target) is always passed the recent 5 lines
-const completionContext = getRecentLines(5);
+				const startPos = new vscode.Position(firstLine, 0);
+				const endPos = new vscode.Position(lastLine, editor.document.lineAt(lastLine).text.length);
 
+				return [
+					editor.document.getText(new vscode.Range(startPos, r.start)),
+					editor.document.getText(new vscode.Range(r.end, endPos)),
+				];
+			})
+	);
+
+// Updated utility function to get either all lines or recent lines based on a parameter
+const getLines = (ty: CompletionType, contextLines: number | null): Action<[string, string]> => {
+	let base: Action<vscode.Range> = getCursor.map(c => new vscode.Range(c, c));
+	if (ty === 'selection') {
+		base = getSelection.map(s => new vscode.Range(s.anchor, s.end));
+	}
+
+	if (contextLines === null) {
+		return getAllLines(base);
+	} else {
+		return getSurroundingLines(base, contextLines);
+	}
+};
 
 const promptUser = (opts: vscode.InputBoxOptions) =>
 	liftEditor(
 		async (editor) => vscode.window.showInputBox(opts)
 	).bind(x => x === undefined ? cancel<string>() : pure(x));
 
-const dispatchPrompt = (ctx: string, code: string, ty: CompletionType, instruction?: string) => {
-	const prompt = createPrompt(ctx, code, ty, instruction);
-	console.debug(prompt);
-	return pure(streamText(prompt));
-};
-
-// Debug is is an action combinator which logs the argument
-const debug = <A>(x: Action<A>) =>
-	x.map(v => {
-		console.debug(v);
-		return v;
-	});
-
-
-const getStaticLinesAndCompletionContext = (contextLines: number | null, ty: CompletionType, instruction?: string) =>
-	sequence(getLines(contextLines), completionContext)
-		.bind(([ctx, code]) => dispatchPrompt(ctx, code, ty, instruction));
-
-const getDynamicLinesAndCompletionContext = (ty: CompletionType, instruction?: string) =>
-	sequence(
-		promptUser({
-			prompt: 'Enter the number of preceding lines for context',
-			placeHolder: 'e.g., 10',
-			value: '10',
-		}),
-		completionContext,
-	)
-		.bind(([lineCount, code]) => {
-			const contextLines = parseInt(lineCount, 10);
-			if (isNaN(contextLines) || contextLines < 0) {
-				throw new Error(`invalid lines: ${contextLines}`); // Cancel if invalid input
-			}
-			return getLines(contextLines).bind(ctx => dispatchPrompt(ctx, code, 'cursor'));
-		});
 
 const instructionPrompt = promptUser({
 	prompt: 'Enter refactoring instructions',
 	placeHolder: 'e.g., Optimize this code for performance',
 });
+
+const dispatchPrompt = (input: PromptInput) => {
+	const prompt = createPrompt(input);
+	console.log(prompt);
+	return pure(streamText(prompt));
+};
 
 const streamAppend = (stream: TextStream) => liftEditor(
 	async editor => {
@@ -121,26 +121,27 @@ const streamReplace = (stream: TextStream) => liftEditor(
 // ------------- Exposed functions -------------
 
 const completeAtCursorDefinedContext = (contextLines: number | null) =>
-	getStaticLinesAndCompletionContext(contextLines, 'cursor')
-		.bind(streamAppend);
-
-// completeAtCursorDynamicContext prompts the user for the number of preceding lines
-// to inject in the context. It should look very similar to `completeAtCursorDefinedContext`,
-// but instead of using a fixed number of preceding context lines, it prompts the user for that value.
-const completeAtCursorDynamicContext =
-	getDynamicLinesAndCompletionContext('cursor')
-		.bind(streamAppend);
-
+	getLines('cursor', contextLines).bind(
+		([before, after]) => dispatchPrompt({
+			type: 'cursor',
+			beforeCursor: before,
+			afterCursor: after,
+		}),
+	).bind(streamAppend);
 
 const replaceSelectionDefinedContext = (contextLines: number | null) =>
-	instructionPrompt
-		.bind(instruction => getStaticLinesAndCompletionContext(contextLines, 'selection', instruction))
-		.bind(streamReplace);
 
-const replaceSelectionDynamicContext = instructionPrompt
-	.bind(instruction => getDynamicLinesAndCompletionContext('selection', instruction))
-	.bind(streamReplace);
-
+	sequence(
+		getLines('selection', contextLines),
+		liftEditor(async (editor) => (s: vscode.Selection) => editor.document.getText(s)).apply(getSelection),
+	).bind(
+		([[before, after], selection]) => dispatchPrompt({
+			type: 'selection',
+			beforeSelection: before,
+			selection: selection,
+			afterSelection: after,
+		})
+	).bind(streamReplace);
 
 const completeWithLanguageDirContext = liftEditor(async editor => {
 	const lang = editor.document.languageId;
@@ -157,12 +158,10 @@ export function activate(context: vscode.ExtensionContext) {
 		// completion
 		{ name: 'complete', action: completeAtCursorDefinedContext(10) },
 		{ name: 'completeFullContext', action: completeAtCursorDefinedContext(null) },
-		{ name: 'completeDynamicContext', action: completeAtCursorDynamicContext },
 
 		// refactoring
 		{ name: 'replace', action: replaceSelectionDefinedContext(20) },
 		{ name: 'replaceFullContext', action: replaceSelectionDefinedContext(null) },
-		{ name: 'replaceDynamicContext', action: replaceSelectionDynamicContext },
 
 		...langs.languages.flatMap(l => l.commands),
 	];
@@ -181,3 +180,4 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	});
 }
+

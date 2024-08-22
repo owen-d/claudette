@@ -23,20 +23,12 @@
         "title": "Claudette: Complete at cursor w/ full context"
       },
       {
-        "command": "claudette.completeDynamicContext",
-        "title": "Claudette: Complete at cursor w/ user-supplied context"
-      },
-      {
         "command": "claudette.replace",
         "title": "Claudette: Replace selection"
       },
       {
         "command": "claudette.replaceFullContext",
         "title": "Claudette: Replace selection w/ full context"
-      },
-      {
-        "command": "claudette.replaceDynamicContext",
-        "title": "Claudette: Replace selection w/ user-supplied context"
       },
       {
         "command": "claudette.findTSDefinitions",
