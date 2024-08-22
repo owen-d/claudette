@@ -11,31 +11,40 @@ const getSelectedCode: Action<string> =
 const getCursor: Action<vscode.Position> =
 	liftEditor(async (editor) => editor.selection.active);
 
-const getAllLines = liftEditor(async (editor) => editor.document.getText());
 
-// get recent `n` lines in both directions from the cursor
+function clampPosition(position: vscode.Position, document: vscode.TextDocument): vscode.Position {
+	// Clamp line number
+	const lineCount = document.lineCount;
+	const clampedLine = Math.max(0, Math.min(position.line, lineCount - 1));
+
+	// Clamp character number
+	const lineLength = document.lineAt(clampedLine).text.length;
+	const clampedCharacter = Math.max(0, Math.min(position.character, lineLength));
+
+	return new vscode.Position(clampedLine, clampedCharacter);
+}
+
 const getRecentLines = (n: number): Action<string> =>
 	getCursor.bind(
 		pos =>
 			liftEditor(async (editor) => {
-				const fromDelta = Math.min(n, pos.line);
-				// clamp to min line
-				const from = pos.translate(-fromDelta, undefined).with(undefined, 0);
-				// clamp to max line
-				const toLine = Math.min(
-					n,
-					editor.document.lineCount - 1 + pos.line,
-				);
-				const to = pos.translate(
-					toLine,
-					editor.document.lineAt(toLine).text.length,
-				);
-				return editor.document.getText(new vscode.Range(from, to));
+				const startLine = Math.max(0, pos.line - n);
+				const endLine = Math.min(editor.document.lineCount - 1, pos.line + n);
+
+				const from = new vscode.Position(startLine, 0);
+				const to = new vscode.Position(endLine, editor.document.lineAt(endLine).text.length);
+
+				const clampedFrom = clampPosition(from, editor.document);
+				const clampedTo = clampPosition(to, editor.document);
+
+				return editor.document.getText(new vscode.Range(clampedFrom, clampedTo));
 			})
 	);
 
 const getLines = (contextLines: number | null) =>
 	contextLines === null ? getAllLines : getRecentLines(contextLines);
+
+const getAllLines = liftEditor(async (editor) => editor.document.getText());
 
 // completionLines (used for completing the current target) is always passed the recent 5 lines
 const completionContext = getRecentLines(5);
