@@ -160,16 +160,15 @@ const replaceSelectionDefinedContext = (contextLines: number | null) =>
 		})
 	).bind(streamReplace);
 
+
 export function activate(context: vscode.ExtensionContext) {
 	// Register commands
 	const commands = [
 		// completion
-		{ name: 'complete', action: completeAtCursorDefinedContext(10) },
-		{ name: 'completeFullContext', action: completeAtCursorDefinedContext(null) },
+		{ name: 'cursor', action: completeAtCursorDefinedContext(50) },
 
 		// refactoring
-		{ name: 'replace', action: replaceSelectionDefinedContext(20) },
-		{ name: 'replaceFullContext', action: replaceSelectionDefinedContext(null) },
+		{ name: 'refactor', action: replaceSelectionDefinedContext(50) },
 
 		...langs.languages.flatMap(l => l.commands),
 	];

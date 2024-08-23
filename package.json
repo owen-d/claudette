@@ -15,20 +15,12 @@
   "contributes": {
     "commands": [
       {
-        "command": "claudette.complete",
+        "command": "claudette.cursor",
         "title": "Claudette: Complete at cursor"
       },
       {
-        "command": "claudette.completeFullContext",
-        "title": "Claudette: Complete at cursor w/ full context"
-      },
-      {
-        "command": "claudette.replace",
-        "title": "Claudette: Replace selection"
-      },
-      {
-        "command": "claudette.replaceFullContext",
-        "title": "Claudette: Replace selection w/ full context"
+        "command": "claudette.refactor",
+        "title": "Claudette: refactor selection"
       },
       {
         "command": "claudette.findTSDefinitions",
