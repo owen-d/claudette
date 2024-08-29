@@ -119,21 +119,33 @@ const streamAppend = (stream: TextStream) => liftEditor(
 );
 
 // Replaces the selected text with a stream of text
-const streamReplace = (actionSelection: Action<vscode.Selection>, actionStream: Action<TextStream>) =>
+const replace = (stream: boolean) => (actionSelection: Action<vscode.Selection>, actionStream: Action<TextStream>) =>
 	sequence(
 		actionSelection,
 		actionStream
-	).bind(([selection, stream]) =>
+	).bind(([selection, data]) =>
 		liftEditor(async editor => {
 			let replacementText = '';
-			for await (const chk of stream) {
+			for await (const chk of data) {
 				replacementText += chk;
+				if (stream) {
+					await editor.edit(editBuilder => {
+						editBuilder.replace(selection, replacementText);
+					});
+				}
+			}
+
+			if (!stream) {
 				await editor.edit(editBuilder => {
-					editBuilder.replace(selection, replacementText);
+					editBuilder.replace(selection, replacementText)
 				});
 			}
 		})
 	);
+
+const streamReplace = replace(true);
+const bufferReplace = replace(false);
+
 
 
 
@@ -203,7 +215,7 @@ const fixNextProblem = (contextLines: number) =>
 				selection: text,
 				instruction: diagnosticContextToPrompt(diagnostic),
 			});
-			return streamReplace(pure(sel), stream);
+			return bufferReplace(pure(sel), stream);
 		}
 	);
 
