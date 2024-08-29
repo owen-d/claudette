@@ -3,6 +3,7 @@ import { Action, pure, liftEditor, cancel, sequence, success, fail } from './act
 import { CompletionType, createPrompt, PromptInput } from './prompt';
 import { streamText, TextStream } from './anthropic';
 import * as langs from './lang/lib';
+import { diagnosticContextToPrompt, resolveNextProblem } from './diagnostic';
 
 // default surrounding lines in each direction
 const DEFAULT_SURROUNDING_LINES = 25;
@@ -25,25 +26,36 @@ function clampPosition(position: vscode.Position, document: vscode.TextDocument)
 	return new vscode.Position(clampedLine, clampedCharacter);
 }
 
-const getSurroundingLines = (target: Action<vscode.Range>, n: number): Action<[string, string]> =>
-	target.bind(
-		r =>
-			liftEditor(async (editor) => {
-				const startLine = Math.max(0, r.start.line - n);
-				const endLine = Math.min(editor.document.lineCount - 1, r.start.line + n);
+// Extracts the surrounding line ranges based on the target range and number of lines
+const getSurroundingLineRanges = (target: Action<vscode.Range>, n: number): Action<[vscode.Range, vscode.Range]> =>
+	target.bind(r => liftEditor(async (editor) => {
+		const startLine = Math.max(0, r.start.line - n);
+		const endLine = Math.min(editor.document.lineCount - 1, r.start.line + n);
 
-				const from = new vscode.Position(startLine, 0);
-				const to = new vscode.Position(endLine, editor.document.lineAt(endLine).text.length);
+		const from = new vscode.Position(startLine, 0);
+		const to = new vscode.Position(endLine, editor.document.lineAt(endLine).text.length);
 
-				const clampedFrom = clampPosition(from, editor.document);
-				const clampedTo = clampPosition(to, editor.document);
+		const clampedFrom = clampPosition(from, editor.document);
+		const clampedTo = clampPosition(to, editor.document);
 
-				return [
-					editor.document.getText(new vscode.Range(clampedFrom, r.start)),
-					editor.document.getText(new vscode.Range(r.end, clampedTo)),
-				];
-			})
+		return [
+			new vscode.Range(clampedFrom, r.start),
+			new vscode.Range(r.end, clampedTo)
+		];
+	}));
+
+// Resolves the ranges to text content
+const resolveSurroundingLines = (ranges: Action<[vscode.Range, vscode.Range]>): Action<[string, string]> =>
+	ranges.bind(([beforeRange, afterRange]) =>
+		liftEditor(async (editor) => [
+			editor.document.getText(beforeRange),
+			editor.document.getText(afterRange)
+		])
 	);
+
+// Combines the two functions to get surrounding lines
+const getSurroundingLines = (target: Action<vscode.Range>, n: number): Action<[string, string]> =>
+	resolveSurroundingLines(getSurroundingLineRanges(target, n));
 
 
 // Updated getAllLines function to adhere to [before, after] cursor semantics
@@ -106,17 +118,24 @@ const streamAppend = (stream: TextStream) => liftEditor(
 	}
 );
 
-const streamReplace = (stream: TextStream) => liftEditor(
-	async editor => {
-		let replacementText = '';
-		for await (const chk of stream) {
-			replacementText += chk;
-			await editor.edit(editBuilder => {
-				editBuilder.replace(editor.selection, replacementText);
-			});
-		}
-	}
-);
+// Replaces the selected text with a stream of text
+const streamReplace = (actionSelection: Action<vscode.Selection>, actionStream: Action<TextStream>) =>
+	sequence(
+		actionSelection,
+		actionStream
+	).bind(([selection, stream]) =>
+		liftEditor(async editor => {
+			let replacementText = '';
+			for await (const chk of stream) {
+				replacementText += chk;
+				await editor.edit(editBuilder => {
+					editBuilder.replace(selection, replacementText);
+				});
+			}
+		})
+	);
+
+
 
 const languageDirContext = liftEditor(async editor => editor.document.languageId)
 	.bind(lang => {
@@ -128,6 +147,7 @@ const languageDirContext = liftEditor(async editor => editor.document.languageId
 	});
 
 // ------------- Exposed functions -------------
+
 
 const completeAtCursorDefinedContext = (contextLines: number | null) =>
 	sequence(
@@ -158,7 +178,34 @@ const replaceSelectionDefinedContext = (contextLines: number | null) =>
 			instruction,
 			context,
 		})
-	).bind(streamReplace);
+	).bind(stream => streamReplace(getSelection, pure(stream)));
+
+// an action which resolves the next problem then passes the surrounding 50 lines in either direction as a refactor context with additional isntructions derived from the DiagnosticContext.
+const fixNextProblem = (contextLines: number) =>
+	resolveNextProblem.bind(
+		diagnostic =>
+			// take diagnostic and resolve the n lines before and after as a range to be later used in replacement
+			getSurroundingLineRanges(pure(new vscode.Range(diagnostic.pos, diagnostic.pos)), contextLines)
+				.bind(([a, b]) => liftEditor(
+					async (editor) => {
+						const combined = a.union(b);
+						const sel = new vscode.Selection(combined.start, combined.end);
+						const text = editor.document.getText(combined);
+						return { diagnostic, text, sel };
+					},
+				))
+	).bind(
+		({ diagnostic, text, sel }) => {
+			const stream = dispatchPrompt({
+				type: 'selection',
+				beforeSelection: '',
+				afterSelection: '',
+				selection: text,
+				instruction: diagnosticContextToPrompt(diagnostic),
+			});
+			return streamReplace(pure(sel), stream);
+		}
+	);
 
 
 export function activate(context: vscode.ExtensionContext) {
@@ -169,6 +216,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// refactoring
 		{ name: 'refactor', action: replaceSelectionDefinedContext(50) },
+
+		// fix
+		{ name: 'fix', action: fixNextProblem(50) },
 
 		...langs.languages.flatMap(l => l.commands),
 	];

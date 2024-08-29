@@ -23,6 +23,10 @@
         "title": "Claudette: refactor selection"
       },
       {
+        "command": "claudette.fix",
+        "title": "Claudette: fix next problem"
+      },
+      {
         "command": "claudette.findTSDefinitions",
         "title": "Claudette: find ts defs"
       },
