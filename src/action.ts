@@ -74,10 +74,21 @@ export function fail<A>(message: string = "Operation failed"): Action<A> {
 
 type MaybePromise<T> = T | Promise<T>;
 export function liftEditor<A>(f: (editor: vscode.TextEditor) => MaybePromise<A>): Action<A> {
+  function isPromise<T>(value: MaybePromise<T>): value is Promise<T> {
+    return value instanceof Promise;
+  }
+
   return new Action(async (editor): Promise<ActionResult<A>> => {
     try {
-      const result = await Promise.resolve(f(editor));
-      return { type: 'success', value: result };
+      const result = f(editor);
+      if (isPromise(result)) {
+        // Handle asynchronous case
+        const asyncResult = await result;
+        return { type: 'success', value: asyncResult };
+      } else {
+        // Handle synchronous case
+        return { type: 'success', value: result };
+      }
     } catch (error) {
       throw error;
     }
