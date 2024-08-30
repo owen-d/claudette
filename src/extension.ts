@@ -137,7 +137,7 @@ const replace = (stream: boolean) => (actionSelection: Action<vscode.Selection>,
 
 			if (!stream) {
 				await editor.edit(editBuilder => {
-					editBuilder.replace(selection, replacementText)
+					editBuilder.replace(selection, replacementText);
 				});
 			}
 		})
@@ -160,7 +160,10 @@ const languageDirContext = liftEditor(async editor => editor.document.languageId
 
 // ------------- Exposed functions -------------
 
-
+/**
+ * Completes text at cursor position with defined context
+ * @param contextLines Number of context lines or null
+ */
 const completeAtCursorDefinedContext = (contextLines: number | null) =>
 	sequence(
 		getLines('cursor', contextLines),
@@ -175,6 +178,10 @@ const completeAtCursorDefinedContext = (contextLines: number | null) =>
 			}),
 		).bind(streamAppend);
 
+/**
+ * Replaces selection with defined context
+ * @param contextLines Number of context lines or null
+ */
 const replaceSelectionDefinedContext = (contextLines: number | null) =>
 	sequence(
 		instructionPrompt,

@@ -45,7 +45,7 @@ Important rules:
 
 Example:
 Given <code>function example(x: number) {<cursor/>}</code>
-A good response would be: "return x * 2; // Double the input"
+A good response would be: "return x * 2;"
 
 Your task:
 
