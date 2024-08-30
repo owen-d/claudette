@@ -33,6 +33,10 @@
       {
         "command": "claudette.findGoDefinitions",
         "title": "Claudette: find go defs"
+      },
+      {
+        "command": "claudette.refs",
+        "title": "Claudette: find references"
       }
     ]
   },

@@ -11,27 +11,31 @@ import { TextStream, streamText } from './anthropic';
 import * as langs from './lang/lib';
 import {
 	diagnosticContextToPrompt,
+	doc,
 	getAllLines,
 	getCursor,
+	getReferences,
+	getReferenceSnippets,
 	getSelection,
 	getSurroundingLineRanges,
 	getSurroundingLines,
-	resolveNextProblem
+	resolveNextProblem,
+	SurroundingText
 } from './navigation';
 import { CompletionType, PromptInput, createPrompt } from './prompt';
 
 
 // Updated utility function to get either all lines or recent lines based on a parameter
-const getLines = (ty: CompletionType, contextLines: number | null): Action<[string, string]> => {
+const getLines = (ty: CompletionType, contextLines: number | null): Action<SurroundingText> => {
 	let base: Action<vscode.Range> = getCursor.map(c => new vscode.Range(c, c));
 	if (ty === 'selection') {
 		base = getSelection.map(s => new vscode.Range(s.anchor, s.end));
 	}
 
 	if (contextLines === null) {
-		return getAllLines(base);
+		return getAllLines(doc, base);
 	} else {
-		return getSurroundingLines(base, contextLines);
+		return getSurroundingLines(doc, base, contextLines);
 	}
 };
 
@@ -102,10 +106,10 @@ const streamReplace = (actionSelection: Action<vscode.Selection>, actionStream: 
 
 				// Update the current selection
 				currentSelection = new vscode.Selection(initialSelection.start, newEnd);
+				editor.selection = currentSelection;
 			}
 		})
 	);
-
 
 const languageDirContext = liftEditor(async editor => editor.document.languageId)
 	.bind(lang => {
@@ -128,7 +132,7 @@ const completeAtCursorDefinedContext = (contextLines: number | null) =>
 		languageDirContext,
 	)
 		.bind(
-			([[before, after], context]) => dispatchPrompt({
+			([{ before, after }, context]) => dispatchPrompt({
 				type: 'cursor',
 				beforeCursor: before,
 				afterCursor: after,
@@ -144,13 +148,12 @@ const replaceSelectionDefinedContext = (contextLines: number | null) =>
 	sequence(
 		instructionPrompt,
 		getLines('selection', contextLines),
-		liftEditor(async (editor) => (s: vscode.Selection) => editor.document.getText(s)).apply(getSelection),
 		languageDirContext,
 	).bind(
-		([instruction, [before, after], selection, context]) => dispatchPrompt({
+		([instruction, { before, target, after }, context]) => dispatchPrompt({
 			type: 'selection',
 			beforeSelection: before,
-			selection: selection,
+			selection: target,
 			afterSelection: after,
 			instruction,
 			context,
@@ -162,10 +165,10 @@ const fixNextProblem = (contextLines: number) =>
 	resolveNextProblem.bind(
 		diagnostic =>
 			// take diagnostic and resolve the n lines before and after as a range to be later used in replacement
-			getSurroundingLineRanges(pure(new vscode.Range(diagnostic.pos, diagnostic.pos)), contextLines)
-				.bind(([a, b]) => liftEditor(
+			getSurroundingLineRanges(doc, pure(new vscode.Range(diagnostic.pos, diagnostic.pos)), contextLines)
+				.bind(({ before, after }) => liftEditor(
 					async (editor) => {
-						const combined = a.union(b);
+						const combined = before.union(after);
 						const sel = new vscode.Selection(combined.start, combined.end);
 						const text = editor.document.getText(combined);
 						return { diagnostic, text, sel };
@@ -196,6 +199,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// fix
 		{ name: 'fix', action: fixNextProblem(50) },
+
+		// references
+		{ name: 'refs', action: getReferenceSnippets },
 
 		...langs.languages.flatMap(l => l.commands),
 	];

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Action, liftEditor, ActionResult, cancellation, success } from "./action";
+import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
 
 // Navigation utilities for moving around vscode
 
@@ -21,55 +21,75 @@ export function clampPosition(position: vscode.Position, document: vscode.TextDo
   return new vscode.Position(clampedLine, clampedCharacter);
 }
 
+// alias to the selected doc
+export const doc: Action<vscode.TextDocument> = liftEditor(e => e.document);
+
+// lookup a specific doc
+export const getDoc = (uri: vscode.Uri) => lift(async () => vscode.workspace.openTextDocument(uri));
+
+
+// Define the SurroundingRanges type
+export type SurroundingRanges = {
+  before: vscode.Range;
+  target: vscode.Range;
+  after: vscode.Range;
+};
+
+// Define the SurroundingText type
+export type SurroundingText = {
+  before: string;
+  target: string;
+  after: string;
+};
+
 // Extracts the surrounding line ranges based on the target range and number of lines
-export const getSurroundingLineRanges = (target: Action<vscode.Range>, n: number): Action<[vscode.Range, vscode.Range]> =>
-  target.bind(r => liftEditor(async (editor) => {
+export const getSurroundingLineRanges = (doc: Action<vscode.TextDocument>, target: Action<vscode.Range>, n: number): Action<SurroundingRanges> =>
+  doc.and(target).map(([doc, r]) => {
     const startLine = Math.max(0, r.start.line - n);
-    const endLine = Math.min(editor.document.lineCount - 1, r.start.line + n);
+    const endLine = Math.min(doc.lineCount - 1, r.start.line + n);
 
     const from = new vscode.Position(startLine, 0);
-    const to = new vscode.Position(endLine, editor.document.lineAt(endLine).text.length);
+    const to = new vscode.Position(endLine, doc.lineAt(endLine).text.length);
 
-    const clampedFrom = clampPosition(from, editor.document);
-    const clampedTo = clampPosition(to, editor.document);
+    const clampedFrom = clampPosition(from, doc);
+    const clampedTo = clampPosition(to, doc);
 
-    return [
-      new vscode.Range(clampedFrom, r.start),
-      new vscode.Range(r.end, clampedTo)
-    ];
-  }));
+    return {
+      before: new vscode.Range(clampedFrom, r.start),
+      target: r,
+      after: new vscode.Range(r.end, clampedTo)
+    };
+  });
 
 // Resolves the ranges to text content
-export const resolveSurroundingLines = (ranges: Action<[vscode.Range, vscode.Range]>): Action<[string, string]> =>
-  ranges.bind(([beforeRange, afterRange]) =>
-    liftEditor(async (editor) => [
-      editor.document.getText(beforeRange),
-      editor.document.getText(afterRange)
-    ])
+export const resolveSurroundingLines = (ranges: Action<SurroundingRanges>): Action<SurroundingText> =>
+  ranges.bind((ranges) =>
+    liftEditor(async (editor) => ({
+      before: editor.document.getText(ranges.before),
+      target: editor.document.getText(ranges.target),
+      after: editor.document.getText(ranges.after)
+    }))
   );
 
 // Combines the two functions to get surrounding lines
-export const getSurroundingLines = (target: Action<vscode.Range>, n: number): Action<[string, string]> =>
-  resolveSurroundingLines(getSurroundingLineRanges(target, n));
+export const getSurroundingLines = (document: Action<vscode.TextDocument>, target: Action<vscode.Range>, n: number): Action<SurroundingText> =>
+  resolveSurroundingLines(getSurroundingLineRanges(document, target, n));
 
+// Updated getAllLines function to adhere to {before, target, after} semantics
+export const getAllLines = (document: Action<vscode.TextDocument>, target: Action<vscode.Range>): Action<SurroundingText> =>
+  document.and(target).map(([doc, r]) => {
+    const firstLine = 0;
+    const lastLine = doc.lineCount - 1;
 
-// Updated getAllLines function to adhere to [before, after] cursor semantics
-export const getAllLines = (target: Action<vscode.Range>): Action<[string, string]> =>
-  target.bind(
-    r =>
-      liftEditor(async (editor) => {
-        const firstLine = 0;
-        const lastLine = editor.document.lineCount - 1;
+    const startPos = new vscode.Position(firstLine, 0);
+    const endPos = new vscode.Position(lastLine, doc.lineAt(lastLine).text.length);
 
-        const startPos = new vscode.Position(firstLine, 0);
-        const endPos = new vscode.Position(lastLine, editor.document.lineAt(lastLine).text.length);
-
-        return [
-          editor.document.getText(new vscode.Range(startPos, r.start)),
-          editor.document.getText(new vscode.Range(r.end, endPos)),
-        ];
-      })
-  );
+    return {
+      before: doc.getText(new vscode.Range(startPos, r.start)),
+      target: doc.getText(r),
+      after: doc.getText(new vscode.Range(r.end, endPos)),
+    };
+  });
 
 // Define a type for the diagnostic context
 export type DiagnosticContext = {
@@ -127,3 +147,38 @@ export const resolveNextProblem: Action<DiagnosticContext> = new Action(
   }
 );
 
+
+
+// Action to find references
+export const getReferences: Action<vscode.Location[]> = liftEditor(async (editor) => {
+  const position = editor.selection.active;
+  const references = await vscode.commands.executeCommand<vscode.Location[]>(
+    'vscode.executeReferenceProvider',
+    editor.document.uri,
+    position
+  );
+  // console.log(JSON.stringify(references, null, 2));
+  return references;
+});
+
+export const getReferenceSnippets = getReferences.bind((locs) =>
+  traverse(locs, (loc) =>
+    getSurroundingLines(getDoc(loc.uri), pure(loc.range), 10) // 10 lines before/after
+      .map(({ before, after, target }) => before + after + target)
+  )
+    .sideEffect(x => console.log(JSON.stringify(x, null, 2)))
+);
+
+// Action to get the current function
+export const getCurrentFunction: Action<string> = liftEditor(async (editor) => {
+  const position = editor.selection.active;
+  const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+    'vscode.executeDocumentSymbolProvider',
+    editor.document.uri
+  );
+  const currentFunction = symbols?.find(s =>
+    s.kind === vscode.SymbolKind.Function &&
+    s.location.range.contains(position)
+  );
+  return currentFunction ? editor.document.getText(currentFunction.location.range) : '';
+});

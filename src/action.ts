@@ -60,6 +60,15 @@ export class Action<A> {
     return sequence(this, other);
   }
 
+  // sideEffect allows accessing the value inside to perform some
+  // non-state manipulating action (i.e. debug logging).
+  sideEffect(f: (a: A) => void): Action<A> {
+    return this.map(x => {
+      f(x);
+      return x;
+    });
+  }
+
 }
 
 export function pure<A>(a: A): Action<A> {
@@ -93,6 +102,11 @@ export function liftEditor<A>(f: (editor: vscode.TextEditor) => MaybePromise<A>)
       throw error;
     }
   });
+}
+
+export function lift<A>(f: () => MaybePromise<A>): Action<A> {
+  // take advantage of not needing the editor
+  return liftEditor(f);
 }
 
 // Traverse an array with an action-returning function
