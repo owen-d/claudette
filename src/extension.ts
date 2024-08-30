@@ -9,10 +9,10 @@ import { diagnosticContextToPrompt, resolveNextProblem } from './diagnostic';
 const DEFAULT_SURROUNDING_LINES = 25;
 
 const getCursor: Action<vscode.Position> =
-	liftEditor(async (editor) => editor.selection.active);
+	liftEditor((editor) => editor.selection.active);
 
 const getSelection: Action<vscode.Selection> =
-	liftEditor(async (editor) => editor.selection);
+	liftEditor((editor) => editor.selection);
 
 function clampPosition(position: vscode.Position, document: vscode.TextDocument): vscode.Position {
 	// Clamp line number

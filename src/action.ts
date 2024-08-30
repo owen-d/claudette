@@ -72,10 +72,11 @@ export function fail<A>(message: string = "Operation failed"): Action<A> {
   });
 }
 
-export function liftEditor<A>(f: (editor: vscode.TextEditor) => Promise<A>): Action<A> {
-  return new Action(async (editor) => {
+type MaybePromise<T> = T | Promise<T>;
+export function liftEditor<A>(f: (editor: vscode.TextEditor) => MaybePromise<A>): Action<A> {
+  return new Action(async (editor): Promise<ActionResult<A>> => {
     try {
-      const result = await f(editor);
+      const result = await Promise.resolve(f(editor));
       return { type: 'success', value: result };
     } catch (error) {
       throw error;
