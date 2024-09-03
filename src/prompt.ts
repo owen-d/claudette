@@ -70,8 +70,16 @@ Remember, focus solely on code generation; do NOT engage in conversation, spurio
 Don't go overboard -- only refactor the selected context. Function definitions should include comments.
 Generate code based on the following inputs, but remember to ONLY output code & relevant comments. No additional formatting.
 
+Example:
+Given <code>function example(x: number) {<selection>return x + 1;</selection>}</code>
+A good response would be: "return x * 2;"
+
+Your task:
+
 ${opts.context ? `<context>${opts.context}</context>` : ''}
 ${opts.instruction ? `<instruction>${opts.instruction}</instruction>` : ''}
 <code>${opts.beforeSelection}<selection>${opts.selection}</selection>${opts.afterSelection}</code>
+
+Remember: Focus solely on refactoring the code within <selection/>, without repeating any code outside of it.
 `;
 };
