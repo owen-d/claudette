@@ -20,7 +20,9 @@ import {
 	getSurroundingLineRanges,
 	getSurroundingLines,
 	resolveNextProblem,
-	SurroundingText
+	SurroundingText,
+	symbolHierarchy,
+	symbolHierarchyAtCursor
 } from './navigation';
 import { CompletionType, PromptInput, createPrompt } from './prompt';
 
@@ -200,8 +202,12 @@ export function activate(context: vscode.ExtensionContext) {
 		// fix
 		{ name: 'fix', action: fixNextProblem(50) },
 
-		// references
+		// experimental
 		{ name: 'refs', action: getReferenceSnippets },
+
+		// development
+		{ name: 'wip', action: symbolHierarchyAtCursor },
+
 
 		...langs.languages.flatMap(l => l.commands),
 	];

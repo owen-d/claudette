@@ -157,7 +157,6 @@ export const getReferences: Action<vscode.Location[]> = liftEditor(async (editor
     editor.document.uri,
     position
   );
-  // console.log(JSON.stringify(references, null, 2));
   return references;
 });
 
@@ -169,16 +168,29 @@ export const getReferenceSnippets = getReferences.bind((locs) =>
     .sideEffect(x => console.log(JSON.stringify(x, null, 2)))
 );
 
-// Action to get the current function
-export const getCurrentFunction: Action<string> = liftEditor(async (editor) => {
-  const position = editor.selection.active;
-  const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
-    'vscode.executeDocumentSymbolProvider',
-    editor.document.uri
+export const fileSymbols = (uri: vscode.Uri): Action<vscode.SymbolInformation[]> =>
+  lift(
+    async () => {
+      const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+        'vscode.executeDocumentSymbolProvider',
+        uri,
+      );
+      return symbols;
+    },
   );
-  const currentFunction = symbols?.find(s =>
-    s.kind === vscode.SymbolKind.Function &&
-    s.location.range.contains(position)
+
+// symbolHierarchy retrieves all the symbols overlapping the current location (generally the cursor)
+// and returns an array of symbols in that file which overlap it, sorted (ascending) by the starting offset.
+// In practice this returns a hierarchy of parent symbols encapsulating a target one.
+export const symbolHierarchy = (loc: vscode.Location) => fileSymbols(loc.uri)
+  .map(
+    (symbols) => symbols
+      .filter(s => s.location.range.contains(loc.range))
+      .sort((a, b) => a.location.range.start.compareTo(b.location.range.start)),
   );
-  return currentFunction ? editor.document.getText(currentFunction.location.range) : '';
-});
+
+export const symbolHierarchyAtCursor = sequence(doc, getCursor)
+  .bind(([d, c]) => symbolHierarchy(new vscode.Location(d.uri, c)))
+  .sideEffect(x => console.log(JSON.stringify(x, null, 2)));
+
+

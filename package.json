@@ -37,6 +37,10 @@
       {
         "command": "claudette.refs",
         "title": "Claudette: find references"
+      },
+      {
+        "command": "claudette.wip",
+        "title": "Claudette: work in progress"
       }
     ]
   },
@@ -46,19 +50,22 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test",
+    "vsc-test": "vscode-test",
     "pkg": "npx vsce package",
     "publish": "npx vsce package && code --install-extension ./claudette-0.0.1.vsix"
   },
   "devDependencies": {
     "@types/axios": "^0.9.36",
+    "@types/jest": "^29.5.12",
     "@types/node": "20.x",
     "@types/vscode": "^1.92.0",
     "@typescript-eslint/eslint-plugin": "^7.14.1",
     "@typescript-eslint/parser": "^7.11.0",
     "@vscode/test-cli": "^0.0.9",
     "@vscode/test-electron": "^2.4.0",
-    "eslint": "^8.57.0"
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.26.0",
