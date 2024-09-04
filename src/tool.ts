@@ -14,7 +14,7 @@ export interface Tool<I, O> {
   description: string;
   inputSchema: JSONSchema;
   examples: Array<{ input: I; output: O }>;
-  run: (input: I) => Action<O>;
+  action: (input: I) => Action<O>;
   addExample: (input: I, output: O) => void;
 }
 
@@ -31,7 +31,7 @@ export function createTool<I, O>(
     description,
     inputSchema,
     examples,
-    run: runFunction,
+    action: runFunction,
     addExample: (input: I, output: O) => {
       examples.push({ input, output });
     },

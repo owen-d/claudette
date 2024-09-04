@@ -20,6 +20,7 @@ import {
 	getSurroundingLineRanges,
 	getSurroundingLines,
 	resolveNextProblem,
+	showSymbolHierarchiesAtCursor,
 	SurroundingText,
 	symbolHierarchy,
 	symbolHierarchyAtCursor
@@ -206,7 +207,7 @@ export function activate(context: vscode.ExtensionContext) {
 		{ name: 'refs', action: getReferenceSnippets },
 
 		// development
-		{ name: 'wip', action: symbolHierarchyAtCursor },
+		{ name: 'wip', action: showSymbolHierarchiesAtCursor },
 
 
 		...langs.languages.flatMap(l => l.commands),

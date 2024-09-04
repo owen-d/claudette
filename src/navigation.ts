@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
+import { createTool, detectSchema } from './tool';
 
 // Navigation utilities for moving around vscode
 
@@ -120,7 +121,6 @@ export function diagnosticContextToPrompt(context: DiagnosticContext): string {
   return prompt;
 }
 
-
 // Action to move to the next problem and extract context
 export const resolveNextProblem: Action<DiagnosticContext> = new Action(
   async (editor: vscode.TextEditor): Promise<ActionResult<DiagnosticContext>> => {
@@ -146,8 +146,6 @@ export const resolveNextProblem: Action<DiagnosticContext> = new Action(
     return cancellation();
   }
 );
-
-
 
 // Action to find references
 export const getReferences: Action<vscode.Location[]> = liftEditor(async (editor) => {
@@ -189,8 +187,67 @@ export const symbolHierarchy = (loc: vscode.Location) => fileSymbols(loc.uri)
       .sort((a, b) => a.location.range.start.compareTo(b.location.range.start)),
   );
 
-export const symbolHierarchyAtCursor = sequence(doc, getCursor)
-  .bind(([d, c]) => symbolHierarchy(new vscode.Location(d.uri, c)))
-  .sideEffect(x => console.log(JSON.stringify(x, null, 2)));
+class Location {
+  constructor(public uri: string, public range: { start: { line: number, character: number }, end: { line: number, character: number } }) { }
 
+  static fromVSCodeLocation(location: vscode.Location): Location {
+    return new Location(
+      location.uri.fsPath,
+      {
+        start: { line: location.range.start.line, character: location.range.start.character },
+        end: { line: location.range.end.line, character: location.range.end.character }
+      }
+    );
+  }
 
+  toVSCodeLocation(): vscode.Location {
+    return new vscode.Location(
+      vscode.Uri.file(this.uri),
+      new vscode.Range(
+        new vscode.Position(this.range.start.line, this.range.start.character),
+        new vscode.Position(this.range.end.line, this.range.end.character)
+      )
+    );
+  }
+}
+
+class SymbolInformation {
+  constructor(public name: string, public kind: vscode.SymbolKind, public location: Location) { }
+
+  static fromVSCodeSymbolInformation(symbol: vscode.SymbolInformation): SymbolInformation {
+    return new SymbolInformation(
+      symbol.name,
+      symbol.kind,
+      Location.fromVSCodeLocation(symbol.location)
+    );
+  }
+
+  toVSCodeSymbolInformation(): vscode.SymbolInformation {
+    return new vscode.SymbolInformation(
+      this.name,
+      this.kind,
+      "",
+      this.location.toVSCodeLocation(),
+    );
+  }
+}
+
+// Update symbolHierarchyTool to use wrapped types
+export const symbolHierarchyTool = createTool<Location[], SymbolInformation[][]>(
+  "Symbol Hierarchy",
+  "Finds the symbol hierarchy for one or more locations in the code",
+  detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
+  (locations) => traverse(locations, (loc) => symbolHierarchy(loc.toVSCodeLocation()).map(symbols => symbols.map(SymbolInformation.fromVSCodeSymbolInformation)))
+);
+
+// Refactored function to resolve and display symbol hierarchies at cursor
+export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCursor)
+  .bind(([d, c]) => symbolHierarchyTool.action(
+    [Location.fromVSCodeLocation(new vscode.Location(d.uri, c))]
+  ))
+  .map(hierarchies => {
+    // Display the hierarchies in a new editor
+    const content = JSON.stringify(hierarchies, null, 2);
+    vscode.workspace.openTextDocument({ content, language: 'plaintext' })
+      .then(doc => vscode.window.showTextDocument(doc, { preview: false }));
+  });
