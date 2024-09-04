@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import {
 	Action,
 	cancel,
+	fail,
+	lift,
 	liftEditor,
 	pure,
 	sequence
@@ -25,6 +27,7 @@ import {
 	symbolHierarchy,
 } from './navigation';
 import { CompletionType, PromptInput, createPrompt } from './prompt';
+import { Command } from './types';
 
 
 // Updated utility function to get either all lines or recent lines based on a parameter
@@ -218,32 +221,89 @@ const fixNextProblem = (contextLines: number) =>
 		}
 	);
 
+
+
+// Class representing the main application
+// Implements the Singleton pattern to ensure only one instance exists
+class App {
+	private static instance: App;
+	private commandHistory: Command[] = [];
+	private maxHistorySize: number = 10;  // Adjust as needed
+
+	// repeat replays the last action via history
+	private repeat: Action<void> = lift(() => {
+		const lastCommand = this.commandHistory[0];
+		if (lastCommand) {
+			return lastCommand.action;
+		} else {
+			return fail<void>("No previous command to repeat");
+		}
+	}).bind(a => a);
+
+	private constructor() { }
+
+	// Private constructor to enforce singleton pattern
+	// Prevents direct instantiation of the App class
+	static getInstance(): App {
+		if (!App.instance) {
+			App.instance = new App();
+		}
+		return App.instance;
+	}
+
+
+	// Method to wrap a command action with tracking functionality
+	// Adds the command to the history and handles any errors
+	trackCommand(command: Command) {
+		this.commandHistory.unshift(command);
+		if (this.commandHistory.length > this.maxHistorySize) {
+			this.commandHistory.pop();
+		}
+	}
+
+	// Returns a copy of the command history
+	// This method ensures that the original array is not modified
+	getCommandHistory(): Command[] {
+		return [...this.commandHistory];
+	}
+
+
+	// Define the commands available in the application
+	// Returns an array of command objects, each containing a name and an associated Action
+	commands(): Array<Command> {
+		return [
+			// completion
+			{ name: 'cursor', action: completeAtCursorDefinedContext(50) },
+
+			// comment,
+			{ name: 'comment', action: completeCommentAtCursorDefinedContext(50) },
+
+			// refactoring
+			{ name: 'refactor', action: replaceSelectionDefinedContext(50) },
+
+			// fix
+			{ name: 'fix', action: fixNextProblem(50) },
+
+			// repeat
+			{ name: 'repeat', action: this.repeat },
+
+			// experimental
+			{ name: 'refs', action: getReferenceSnippets },
+
+			// development
+			{ name: 'wip', action: showSymbolHierarchiesAtCursor },
+
+			...langs.languages.flatMap(l => l.commands),
+		];
+	}
+
+
+
+}
+
 export function activate(context: vscode.ExtensionContext) {
-	// Register commands
-	const commands = [
-		// completion
-		{ name: 'cursor', action: completeAtCursorDefinedContext(50) },
-
-		// comment,
-		{ name: 'comment', action: completeCommentAtCursorDefinedContext(50) },
-
-		// refactoring
-		{ name: 'refactor', action: replaceSelectionDefinedContext(50) },
-
-		// fix
-		{ name: 'fix', action: fixNextProblem(50) },
-
-		// experimental
-		{ name: 'refs', action: getReferenceSnippets },
-
-		// development
-		{ name: 'wip', action: showSymbolHierarchiesAtCursor },
-
-
-		...langs.languages.flatMap(l => l.commands),
-	];
-
-	commands.forEach(cmd => {
+	const app = App.getInstance();
+	app.commands().forEach(cmd => {
 		context.subscriptions.push(
 			vscode.commands.registerCommand('claudette.' + cmd.name, async () => {
 				const editor = vscode.window.activeTextEditor;
@@ -252,9 +312,9 @@ export function activate(context: vscode.ExtensionContext) {
 					if (result.type === 'cancelled') {
 						vscode.window.showInformationMessage('Operation was cancelled');
 					}
+					app.trackCommand(cmd);
 				}
 			})
 		);
 	});
 }
-

@@ -16,40 +16,54 @@
     "commands": [
       {
         "command": "claudette.cursor",
+        "shortTitle": "cursor",
         "title": "Claudette: Complete at cursor",
         "key": "C-l c c"
       },
       {
         "command": "claudette.comment",
+        "shortTitle": "comment",
         "title": "Claudette: Complete comment at cursor",
         "key": "C-l c shift+c"
       },
       {
         "command": "claudette.refactor",
+        "shortTitle": "refactor",
         "title": "Claudette: refactor selection",
         "key": "C-l c r"
       },
       {
         "command": "claudette.fix",
+        "shortTitle": "fix",
         "title": "Claudette: fix next problem",
         "key": "C-l c f"
       },
       {
         "command": "claudette.findTSDefinitions",
+        "shortTitle": "ts defs",
         "title": "Claudette: find ts defs"
       },
       {
         "command": "claudette.findGoDefinitions",
+        "shortTitle": "go defs",
         "title": "Claudette: find go defs"
       },
       {
         "command": "claudette.refs",
+        "shortTitle": "refs",
         "title": "Claudette: find references"
       },
       {
         "command": "claudette.wip",
+        "shortTitle": "wip",
         "title": "Claudette: work in progress",
         "key": "C-l c w"
+      },
+      {
+        "command": "claudette.repeat",
+        "shortTitle": "repeat",
+        "title": "Claudette: repeat last command",
+        "key": "C-l c ."
       }
     ],
     "keybindings": [
@@ -76,6 +90,11 @@
       {
         "command": "claudette.wip",
         "key": "ctrl+l c w",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "claudette.repeat",
+        "key": "ctrl+l c .",
         "when": "editorTextFocus"
       }
     ]

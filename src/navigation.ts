@@ -160,13 +160,15 @@ export const getReferences: Action<vscode.Location[]> = liftEditor(async (editor
   return references;
 });
 
-export const getReferenceSnippets = getReferences.bind((locs) =>
-  traverse(locs, (loc) =>
-    getSurroundingLines(getDoc(loc.uri), pure(loc.range), 10) // 10 lines before/after
-      .map(({ before, after, target }) => before + after + target)
-  )
-    .sideEffect(x => console.log(JSON.stringify(x, null, 2)))
-);
+export const getReferenceSnippets = getReferences.bind(
+  (locs) =>
+    traverse(locs, (loc) =>
+      getSurroundingLines(getDoc(loc.uri), pure(loc.range), 10) // 10 lines before/after
+        .map(({ before, after, target }) => before + after + target)
+    )
+      .sideEffect(x => console.log(JSON.stringify(x, null, 2)))
+)
+  .then(pure(undefined));
 
 export const fileSymbols = (uri: vscode.Uri): Action<vscode.SymbolInformation[]> =>
   lift(
