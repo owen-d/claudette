@@ -16,15 +16,23 @@
     "commands": [
       {
         "command": "claudette.cursor",
-        "title": "Claudette: Complete at cursor"
+        "title": "Claudette: Complete at cursor",
+        "key": "C-l c c"
+      },
+      {
+        "command": "claudette.comment",
+        "title": "Claudette: Complete comment at cursor",
+        "key": "C-l c shift+c"
       },
       {
         "command": "claudette.refactor",
-        "title": "Claudette: refactor selection"
+        "title": "Claudette: refactor selection",
+        "key": "C-l c r"
       },
       {
         "command": "claudette.fix",
-        "title": "Claudette: fix next problem"
+        "title": "Claudette: fix next problem",
+        "key": "C-l c f"
       },
       {
         "command": "claudette.findTSDefinitions",
@@ -40,7 +48,35 @@
       },
       {
         "command": "claudette.wip",
-        "title": "Claudette: work in progress"
+        "title": "Claudette: work in progress",
+        "key": "C-l c w"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "claudette.cursor",
+        "key": "ctrl+l c c",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "claudette.comment",
+        "key": "ctrl+l c shift+c",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "claudette.refactor",
+        "key": "ctrl+l c r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "claudette.fix",
+        "key": "ctrl+l c f",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "claudette.wip",
+        "key": "ctrl+l c w",
+        "when": "editorTextFocus"
       }
     ]
   },

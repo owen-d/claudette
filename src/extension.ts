@@ -41,6 +41,8 @@ const getLines = (ty: CompletionType, contextLines: number | null): Action<Surro
 	}
 };
 
+// Utility function to prompt the user for input
+// Returns an Action that resolves to the user's input string or cancels if input is undefined
 const promptUser = (opts: vscode.InputBoxOptions) =>
 	liftEditor(
 		async (editor) => vscode.window.showInputBox(opts)
@@ -86,6 +88,8 @@ const bufferReplace = (actionSelection: Action<vscode.Selection>, actionStream: 
 		})
 	);
 
+// Function to replace selected text with a stream of text, updating the selection as new content is added
+// This provides a more dynamic, real-time replacement experience compared to bufferReplace
 const streamReplace = (actionSelection: Action<vscode.Selection>, actionStream: Action<TextStream>): Action<void> =>
 	sequence(actionSelection, actionStream).bind(([initialSelection, stream]) =>
 		liftEditor(async editor => {
@@ -113,6 +117,8 @@ const streamReplace = (actionSelection: Action<vscode.Selection>, actionStream: 
 		})
 	);
 
+// Function to get language-specific directory context
+// Returns an Action that resolves to a context string based on the current document's language
 const languageDirContext = liftEditor(async editor => editor.document.languageId)
 	.bind(lang => {
 		const resolver = langs.actions?.[lang].dirCtx;
@@ -120,13 +126,15 @@ const languageDirContext = liftEditor(async editor => editor.document.languageId
 			throw new Error(`language ${lang} unsupported for context lookups`);
 		}
 		return resolver;
-	});
+	})
+	.or(pure(""));
 
 // ------------- Exposed functions -------------
 
 /**
  * Completes text at cursor position with defined context
- * @param contextLines Number of context lines or null
+ * @param {number | null} contextLines - Number of context lines or null
+ * @returns {Action<void>} An Action that completes text at the cursor position
  */
 const completeAtCursorDefinedContext = (contextLines: number | null) =>
 	sequence(
@@ -143,8 +151,29 @@ const completeAtCursorDefinedContext = (contextLines: number | null) =>
 		).bind(streamAppend);
 
 /**
+ * Creates a comment for the current code context
+ * @param {number | null} contextLines Number of context lines or null
+ * @returns {Action<void>} An Action that creates and appends a comment
+ */
+const completeCommentAtCursorDefinedContext = (contextLines: number | null) =>
+	sequence(
+		getLines('cursor', contextLines),
+		languageDirContext,
+	)
+		.bind(
+			([{ before, after }, context]) => dispatchPrompt({
+				type: 'comment',
+				beforeCursor: before,
+				afterCursor: after,
+				context,
+			}),
+		)
+		.bind(streamAppend);
+
+/**
  * Replaces selection with defined context
- * @param contextLines Number of context lines or null
+ * @param {number | null} contextLines - Number of context lines or null
+ * @returns {Action<void>} An Action that replaces the selected text
  */
 const replaceSelectionDefinedContext = (contextLines: number | null) =>
 	sequence(
@@ -189,12 +218,14 @@ const fixNextProblem = (contextLines: number) =>
 		}
 	);
 
-
 export function activate(context: vscode.ExtensionContext) {
 	// Register commands
 	const commands = [
 		// completion
 		{ name: 'cursor', action: completeAtCursorDefinedContext(50) },
+
+		// comment,
+		{ name: 'comment', action: completeCommentAtCursorDefinedContext(50) },
 
 		// refactoring
 		{ name: 'refactor', action: replaceSelectionDefinedContext(50) },

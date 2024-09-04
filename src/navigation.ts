@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
 import { createTool, detectSchema } from './tool';
 
-// Navigation utilities for moving around vscode
+/*
+---------------------- Navigation utilities for moving around vscode ----------------------
+*/
 
 export const getCursor: Action<vscode.Position> =
   liftEditor((editor) => editor.selection.active);
@@ -27,7 +29,6 @@ export const doc: Action<vscode.TextDocument> = liftEditor(e => e.document);
 
 // lookup a specific doc
 export const getDoc = (uri: vscode.Uri) => lift(async () => vscode.workspace.openTextDocument(uri));
-
 
 // Define the SurroundingRanges type
 export type SurroundingRanges = {
@@ -102,6 +103,7 @@ export type DiagnosticContext = {
   relatedInformation?: vscode.DiagnosticRelatedInformation[];
 };
 
+// Function to convert a diagnostic context to a prompt string.
 export function diagnosticContextToPrompt(context: DiagnosticContext): string {
   let prompt = `Resolve the following issue:\n`;
   prompt += `Message: ${context.message}\n`;

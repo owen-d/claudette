@@ -60,6 +60,22 @@ export class Action<A> {
     return sequence(this, other);
   }
 
+  // Or will defer to a second action if the first is cancelled or errors
+  or(other: Action<A>): Action<A> {
+    return new Action<A>(async (editor) => {
+      try {
+        const result = await this.run(editor);
+        if (result.type === 'cancelled') {
+          return other.execute(editor);
+        }
+        return result;
+      } catch (error) {
+        return other.execute(editor);
+      }
+    });
+  }
+
+
   // sideEffect allows accessing the value inside to perform some
   // non-state manipulating action (i.e. debug logging).
   sideEffect(f: (a: A) => void): Action<A> {
