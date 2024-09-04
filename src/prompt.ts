@@ -42,6 +42,8 @@ Important rules:
 3. Only complete the current context (function, block, etc). Don't add entire new functions unless explicitly instructed.
 4. Include comments for function definitions or complex logic.
 5. Generate only code and relevant comments. No additional formatting or markdown.
+6. Only add the minimum required to complete the next logical chunk, i.e. function call, subroutine, etc.
+7. Pay attention to any comments in the code. They often provide hints.
 
 Example:
 Given <code>function example(x: number) {<cursor/>}</code>

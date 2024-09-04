@@ -23,7 +23,6 @@ import {
 	showSymbolHierarchiesAtCursor,
 	SurroundingText,
 	symbolHierarchy,
-	symbolHierarchyAtCursor
 } from './navigation';
 import { CompletionType, PromptInput, createPrompt } from './prompt';
 
