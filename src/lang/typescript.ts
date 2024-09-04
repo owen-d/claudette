@@ -63,7 +63,7 @@ async function findTypeScriptFiles(folderPath: string, maxDepth: number = 0): Pr
     for (const [name, type] of entries) {
       const fullPath = path.join(currentPath, name);
 
-      if (type === vscode.FileType.File && name.endsWith('.ts')) {
+      if (type === vscode.FileType.File && name.endsWith('.ts') && !name.endsWith('.test.ts')) {
         files.push(fullPath);
       } else if (type === vscode.FileType.Directory) {
         queue.push({ path: fullPath, depth: depth + 1 });
