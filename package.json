@@ -23,8 +23,8 @@
       {
         "command": "claudette.comment",
         "shortTitle": "comment",
-        "title": "Claudette: Complete comment at cursor",
-        "key": "C-l c shift+c"
+        "title": "Claudette: Complete doc || comment at cursor",
+        "key": "C-l c d"
       },
       {
         "command": "claudette.refactor",
@@ -74,7 +74,7 @@
       },
       {
         "command": "claudette.comment",
-        "key": "ctrl+l c shift+c",
+        "key": "ctrl+l c d",
         "when": "editorTextFocus"
       },
       {

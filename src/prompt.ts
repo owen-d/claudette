@@ -1,44 +1,44 @@
 export type CompletionType = "selection" | "cursor" | "comment";
 
 type CursorPrompt = {
-  type: 'cursor';
-  beforeCursor: string;
-  afterCursor: string;
-  context?: string;
-  instruction?: string;
+   type: 'cursor';
+   beforeCursor: string;
+   afterCursor: string;
+   context?: string;
+   instruction?: string;
 };
 
 type RefactorPrompt = {
-  type: 'selection';
-  beforeSelection: string
-  selection: string,
-  afterSelection: string,
-  context?: string;
-  instruction?: string;
+   type: 'selection';
+   beforeSelection: string
+   selection: string,
+   afterSelection: string,
+   context?: string;
+   instruction?: string;
 };
 
 type CommentPrompt = {
-  type: 'comment';
-  beforeCursor: string;
-  afterCursor: string;
-  context?: string;
-  instruction?: string;
+   type: 'comment';
+   beforeCursor: string;
+   afterCursor: string;
+   context?: string;
+   instruction?: string;
 };
 
 export type PromptInput = CursorPrompt | RefactorPrompt | CommentPrompt;
 
 export function createPrompt(input: PromptInput): string {
-  if (input.type === 'cursor') {
-    return createCursorPrompt(input);
-  } else if (input.type === 'selection') {
-    return createRefactorPrompt(input);
-  } else {
-    return createCommentPrompt(input);
-  }
+   if (input.type === 'cursor') {
+      return createCursorPrompt(input);
+   } else if (input.type === 'selection') {
+      return createRefactorPrompt(input);
+   } else {
+      return createCommentPrompt(input);
+   }
 }
 
 function createCursorPrompt(opts: CursorPrompt): string {
-  return `As an AI coding assistant, your task is to provide code completion at the cursor position. Follow these guidelines strictly:
+   return `As an AI coding assistant, your task is to provide code completion at the cursor position. Follow these guidelines strictly:
 
 1. Output Format: Provide ONLY code or comments to be inserted at <cursor/>. No explanations or markdown.
 
@@ -77,7 +77,7 @@ Your response should begin exactly where <cursor/> is placed, providing only the
 }
 
 function createRefactorPrompt(opts: RefactorPrompt): string {
-  return `As an AI coding assistant, your task is to refactor the selected code. Follow these guidelines strictly:
+   return `As an AI coding assistant, your task is to refactor the selected code. Follow these guidelines strictly:
 
 1. Output Format: Provide ONLY the refactored code and necessary comments to replace the <selection/> block. No explanations or markdown.
 
@@ -123,7 +123,7 @@ Your response should contain only the refactored code to replace the content wit
 }
 
 function createCommentPrompt(opts: CommentPrompt): string {
-  return `As an AI coding assistant, your task is to provide comments at the cursor position. Follow these guidelines strictly:
+   return `As an AI coding assistant, your task is to provide comments at the cursor position. Follow these guidelines strictly:
 
 1. Output Format: Provide ONLY comments to be inserted at <cursor/>. No explanations or markdown.
 
@@ -139,17 +139,30 @@ function createCommentPrompt(opts: CommentPrompt): string {
    - For functions, describe parameters, return values, and side effects if applicable.
    - Do not state the obvious or repeat information clearly visible in the code.
 
-5. Precision:
+5. Enrichment
+   - Take hints from surrounding context and follow existing code conventions
+   - Prefer enriched comments when possible, e.g. including JSDoc syntax for js/ts, rustdoc conventions for rust, etc
+
+6. Precision:
    - Start exactly at <cursor/> without repeating any existing code or comments.
    - Only add the minimum comments required to explain the immediate context.
 
-6. Restraint:
+7. Restraint:
    - Do not create comments for code that is self-explanatory.
    - If a section is already well-commented, add comments only if they provide significant additional value.
 
-Example:
+Example 1:
 Given <code>function example(x: number) {<cursor/>return x * 2;}</code>
 A good response would be: "// Doubles the input number"
+
+Example 2:
+Given <code><cursor/>
+function example(x: number) {<cursor/>return x * 2;}</code>
+A good response would be: "/**
+ * Example function demonstrating refactoring with JSDoc
+ * @param {number} x - The input number
+ * @returns {number} The doubled value of the input
+ */"
 
 This example demonstrates adding only the necessary comment to explain the function's purpose, without any extraneous content.
 

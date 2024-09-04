@@ -51,7 +51,8 @@ const promptUser = (opts: vscode.InputBoxOptions) =>
 		async (editor) => vscode.window.showInputBox(opts)
 	).bind(x => x === undefined ? cancel<string>() : pure(x));
 
-
+// Utility function to prompt the user for refactoring instructions
+// Returns an Action that resolves to the user's input or cancels if no input is provided
 const instructionPrompt = promptUser({
 	prompt: 'Enter refactoring instructions',
 	placeHolder: 'e.g., Optimize this code for performance',
@@ -63,6 +64,9 @@ const dispatchPrompt = (input: PromptInput) => {
 	return pure(streamText(prompt));
 };
 
+// Function to append a stream of text at the current cursor position
+// Uses liftEditor to perform the insertion operation asynchronously
+// Iterates through the stream chunks and inserts each at the active selection
 const streamAppend = (stream: TextStream) => liftEditor(
 	async editor => {
 		for await (const chk of stream) {
@@ -297,10 +301,11 @@ class App {
 		];
 	}
 
-
-
 }
 
+// Export the activate function
+// This function is called when the extension is activated
+// It registers all commands defined in the App instance with VS Code
 export function activate(context: vscode.ExtensionContext) {
 	const app = App.getInstance();
 	app.commands().forEach(cmd => {

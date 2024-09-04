@@ -6,12 +6,26 @@ import { createTool, detectSchema } from './tool';
 ---------------------- Navigation utilities for moving around vscode ----------------------
 */
 
+/**
+ * Retrieves the current cursor position in the active text editor
+ * @returns {Action<vscode.Position>} An Action that resolves to the current cursor position
+ */
 export const getCursor: Action<vscode.Position> =
   liftEditor((editor) => editor.selection.active);
 
+/**
+ * Retrieves the current selection in the active text editor
+ * @returns {Action<vscode.Selection>} An Action that resolves to the current selection
+ */
 export const getSelection: Action<vscode.Selection> =
   liftEditor((editor) => editor.selection);
 
+/**
+* Clamps a given position within the bounds of a document
+* @param {vscode.Position} position - The position to clamp
+* @param {vscode.TextDocument} document - The document to clamp within
+* @returns {vscode.Position} The clamped position
+*/
 export function clampPosition(position: vscode.Position, document: vscode.TextDocument): vscode.Position {
   // Clamp line number
   const lineCount = document.lineCount;
@@ -23,6 +37,7 @@ export function clampPosition(position: vscode.Position, document: vscode.TextDo
 
   return new vscode.Position(clampedLine, clampedCharacter);
 }
+
 
 // alias to the selected doc
 export const doc: Action<vscode.TextDocument> = liftEditor(e => e.document);
