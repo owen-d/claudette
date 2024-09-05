@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
-import { Codec, codecTool, createTool, detectSchema, Tool } from './tool';
+import { Codec, detectSchema, Tool } from './tool';
 
 /*
 ---------------------- Navigation utilities for moving around vscode ----------------------
@@ -266,7 +266,7 @@ class SymbolInformation {
 }
 
 // Update symbolHierarchyTool to use wrapped types
-export const symbolHierarchyTool = createTool<Location[], SymbolInformation[][]>(
+export const symbolHierarchyTool = Tool.create<Location[], SymbolInformation[][]>(
   "Symbol Hierarchy",
   "Finds the symbol hierarchy for one or more locations in the code",
   detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
@@ -274,7 +274,7 @@ export const symbolHierarchyTool = createTool<Location[], SymbolInformation[][]>
 );
 
 export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCursor)
-  .bind(([d, c]) => symbolHierarchyTool.action(
+  .bind(([d, c]) => symbolHierarchyTool.run(
     [Location.fromVSCodeLocation(new vscode.Location(d.uri, c))]
   ))
   .map(hierarchies => {
@@ -285,25 +285,21 @@ export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCurs
   });
 
 
-// tool<vscode.Location, vscode.Location[]>
-// using `vscode.executeReferenceProvider`.
-// Implemented by:
-// * An inner `Tool<Location, Location[]>`
-// * wrapped by a `codecTool` mapping the inner tool to `Tool<vscode.Location, vscode.Location[]>
-export const referencesTool: Tool<vscode.Location, vscode.Location[]> = codecTool(
-  createTool<Location, Location[]>(
-    "References",
-    "Finds all references to a symbol at a given location",
-    detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
-    (location) => liftEditor(async (editor) => {
-      const references = await vscode.commands.executeCommand<vscode.Location[]>(
-        'vscode.executeReferenceProvider',
-        location.toVSCodeLocation().uri,
-        location.toVSCodeLocation().range.start
-      );
-      return references?.map(Location.fromVSCodeLocation) || [];
-    })
-  ),
-  Location.codec(),
-  Codec.array(Location.codec().flip())
-); 
+export const referencesTool: Tool<vscode.Location, vscode.Location[]> =
+  Tool.wrap(
+    Tool.create<Location, Location[]>(
+      "References",
+      "Finds all references to a symbol at a given location",
+      detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
+      (location) => liftEditor(async (editor) => {
+        const references = await vscode.commands.executeCommand<vscode.Location[]>(
+          'vscode.executeReferenceProvider',
+          location.toVSCodeLocation().uri,
+          location.toVSCodeLocation().range.start
+        );
+        return references?.map(Location.fromVSCodeLocation) || [];
+      })
+    ),
+    Location.codec(),
+    Codec.array(Location.codec().flip()),
+  );

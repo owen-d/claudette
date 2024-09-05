@@ -1,59 +1,46 @@
 import { Action } from "./action";
 
-/*
-a Tool interface. Each tool has
-* An {Input,Output} (parameterized)
-  * the input schema is passed to the constructor
-* A name method (string)
-* A description method (string)
-* An optional set of example (Input,Output) pairs
-* A `run(input) -> Action<output>` method
-*/
-export interface Tool<I, O> {
-  name: string;
-  description: string;
-  inputSchema: JSONSchema;
-  examples: Array<{ input: I; output: O }>;
-  action: (input: I) => Action<O>;
+export class Tool<I, O> {
+  private constructor(
+    public readonly name: string,
+    public readonly description: string,
+    public readonly inputSchema: JSONSchema,
+    private readonly actionFn: (input: I) => Action<O>,
+    public readonly examples: Array<{ input: I; output: O }> = []
+  ) { }
+
+  static create<I, O>(
+    name: string,
+    description: string,
+    inputSchema: JSONSchema,
+    actionFn: (input: I) => Action<O>,
+    examples: Array<{ input: I; output: O }> = []
+  ): Tool<I, O> {
+    return new Tool(name, description, inputSchema, actionFn, examples);
+  }
+
+  run(input: I): Action<O> {
+    return this.actionFn(input);
+  }
+
+  static wrap<I, I1, O, O1>(
+    tool: Tool<I, O>,
+    inputCodec: Codec<I1, I>,
+    outputCodec: Codec<O, O1>
+  ): Tool<I1, O1> {
+    return Tool.create(
+      tool.name,
+      tool.description,
+      tool.inputSchema,
+      (input: I1) => tool.run(inputCodec.encode(input)).map(outputCodec.encode),
+      tool.examples?.map(example => ({
+        input: inputCodec.decode(example.input),
+        output: outputCodec.encode(example.output)
+      }))
+    );
+  }
 }
 
-export function createTool<I, O>(
-  name: string,
-  description: string,
-  inputSchema: JSONSchema,
-  action: (input: I) => Action<O>,
-  examples?: Array<{ input: I; output: O }>,
-): Tool<I, O> {
-
-  return {
-    name,
-    description,
-    inputSchema,
-    examples: examples || [],
-    action,
-  };
-}
-
-/**
- * Combines a Tool<I,O> with Codecs to create a Tool<I1,O1>
- * This function is useful for adapting tools to work with different data representations,
- * such as simplifying complex vscode types to reduce token requirements or enable
- * bidirectional conversion between internal and external representations.
- */
-export function codecTool<I, O, I1, O1>(
-  tool: Tool<I, O>,
-  inputCodec: Codec<I1, I>,
-  outputCodec: Codec<O, O1>,
-): Tool<I1, O1> {
-  return {
-    ...tool,
-    action: (input: I1) => tool.action(inputCodec.encode(input)).map(outputCodec.encode),
-    examples: tool.examples?.map(example => ({
-      input: inputCodec.decode(example.input),
-      output: outputCodec.encode(example.output)
-    }))
-  };
-}
 
 /**
  * Codec class for bidirectional conversion between types A and B
