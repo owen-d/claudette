@@ -49,11 +49,6 @@
         "title": "Claudette: find go defs"
       },
       {
-        "command": "claudette.refs",
-        "shortTitle": "refs",
-        "title": "Claudette: find references"
-      },
-      {
         "command": "claudette.wip",
         "shortTitle": "wip",
         "title": "Claudette: work in progress",

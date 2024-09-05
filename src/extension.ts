@@ -16,8 +16,6 @@ import {
 	doc,
 	getAllLines,
 	getCursor,
-	getReferences,
-	getReferenceSnippets,
 	getSelection,
 	getSurroundingLineRanges,
 	getSurroundingLines,
@@ -290,9 +288,6 @@ class App {
 
 			// repeat
 			{ name: 'repeat', action: this.repeat },
-
-			// experimental
-			{ name: 'refs', action: getReferenceSnippets },
 
 			// development
 			{ name: 'wip', action: showSymbolHierarchiesAtCursor },

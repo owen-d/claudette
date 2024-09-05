@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
-import { createTool, detectSchema } from './tool';
+import { Codec, codecTool, createTool, detectSchema, Tool } from './tool';
 
 /*
 ---------------------- Navigation utilities for moving around vscode ----------------------
@@ -164,27 +164,6 @@ export const resolveNextProblem: Action<DiagnosticContext> = new Action(
   }
 );
 
-// Action to find references
-export const getReferences: Action<vscode.Location[]> = liftEditor(async (editor) => {
-  const position = editor.selection.active;
-  const references = await vscode.commands.executeCommand<vscode.Location[]>(
-    'vscode.executeReferenceProvider',
-    editor.document.uri,
-    position
-  );
-  return references;
-});
-
-export const getReferenceSnippets = getReferences.bind(
-  (locs) =>
-    traverse(locs, (loc) =>
-      getSurroundingLines(getDoc(loc.uri), pure(loc.range), 10) // 10 lines before/after
-        .map(({ before, after, target }) => before + after + target)
-    )
-      .sideEffect(x => console.log(JSON.stringify(x, null, 2)))
-)
-  .then(pure(undefined));
-
 export const fileSymbols = (uri: vscode.Uri): Action<vscode.SymbolInformation[]> =>
   lift(
     async () => {
@@ -206,8 +185,30 @@ export const symbolHierarchy = (loc: vscode.Location) => fileSymbols(loc.uri)
       .sort((a, b) => a.location.range.start.compareTo(b.location.range.start)),
   );
 
+/**
+ * Location class represents a position in a file
+ * @property {string} uri - The file path
+ * @property {Object} range - The range in the file
+ * @property {Object} range.start - Start position
+ * @property {number} range.start.line - Start line number
+ * @property {number} range.start.character - Start character number
+ * @property {Object} range.end - End position
+ * @property {number} range.end.line - End line number
+ * @property {number} range.end.character - End character number
+ */
 class Location {
   constructor(public uri: string, public range: { start: { line: number, character: number }, end: { line: number, character: number } }) { }
+
+  /**
+ * Provides a codec for bidirectional conversion between vscode.Location and Location
+ * @returns {Codec<vscode.Location, Location>} A codec object with encode and decode methods
+ */
+  static codec(): Codec<vscode.Location, Location> {
+    return Codec.from(
+      (vscodeLocation: vscode.Location) => Location.fromVSCodeLocation(vscodeLocation),
+      (location: Location) => location.toVSCodeLocation()
+    );
+  }
 
   static fromVSCodeLocation(location: vscode.Location): Location {
     return new Location(
@@ -230,8 +231,21 @@ class Location {
   }
 }
 
+/**
+ * SymbolInformation class represents a symbol in the code
+ * @property {string} name - The name of the symbol
+ * @property {vscode.SymbolKind} kind - The kind of symbol (e.g., function, variable)
+ * @property {Location} location - The location of the symbol in the file
+ */
 class SymbolInformation {
   constructor(public name: string, public kind: vscode.SymbolKind, public location: Location) { }
+
+  static codec(): Codec<vscode.SymbolInformation, SymbolInformation> {
+    return Codec.from(
+      (vscodeSymbol: vscode.SymbolInformation) => SymbolInformation.fromVSCodeSymbolInformation(vscodeSymbol),
+      (symbol: SymbolInformation) => symbol.toVSCodeSymbolInformation()
+    );
+  };
 
   static fromVSCodeSymbolInformation(symbol: vscode.SymbolInformation): SymbolInformation {
     return new SymbolInformation(
@@ -259,7 +273,6 @@ export const symbolHierarchyTool = createTool<Location[], SymbolInformation[][]>
   (locations) => traverse(locations, (loc) => symbolHierarchy(loc.toVSCodeLocation()).map(symbols => symbols.map(SymbolInformation.fromVSCodeSymbolInformation)))
 );
 
-// Refactored function to resolve and display symbol hierarchies at cursor
 export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCursor)
   .bind(([d, c]) => symbolHierarchyTool.action(
     [Location.fromVSCodeLocation(new vscode.Location(d.uri, c))]
@@ -270,3 +283,27 @@ export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCurs
     vscode.workspace.openTextDocument({ content, language: 'plaintext' })
       .then(doc => vscode.window.showTextDocument(doc, { preview: false }));
   });
+
+
+// tool<vscode.Location, vscode.Location[]>
+// using `vscode.executeReferenceProvider`.
+// Implemented by:
+// * An inner `Tool<Location, Location[]>`
+// * wrapped by a `codecTool` mapping the inner tool to `Tool<vscode.Location, vscode.Location[]>
+export const referencesTool: Tool<vscode.Location, vscode.Location[]> = codecTool(
+  createTool<Location, Location[]>(
+    "References",
+    "Finds all references to a symbol at a given location",
+    detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
+    (location) => liftEditor(async (editor) => {
+      const references = await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeReferenceProvider',
+        location.toVSCodeLocation().uri,
+        location.toVSCodeLocation().range.start
+      );
+      return references?.map(Location.fromVSCodeLocation) || [];
+    })
+  ),
+  Location.codec(),
+  Codec.array(Location.codec().flip())
+); 

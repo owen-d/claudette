@@ -15,27 +15,79 @@ export interface Tool<I, O> {
   inputSchema: JSONSchema;
   examples: Array<{ input: I; output: O }>;
   action: (input: I) => Action<O>;
-  addExample: (input: I, output: O) => void;
 }
 
 export function createTool<I, O>(
   name: string,
   description: string,
   inputSchema: JSONSchema,
-  runFunction: (input: I) => Action<O>
+  action: (input: I) => Action<O>,
+  examples?: Array<{ input: I; output: O }>,
 ): Tool<I, O> {
-  const examples: Array<{ input: I; output: O }> = [];
 
   return {
     name,
     description,
     inputSchema,
-    examples,
-    action: runFunction,
-    addExample: (input: I, output: O) => {
-      examples.push({ input, output });
-    },
+    examples: examples || [],
+    action,
   };
+}
+
+/**
+ * Combines a Tool<I,O> with Codecs to create a Tool<I1,O1>
+ * This function is useful for adapting tools to work with different data representations,
+ * such as simplifying complex vscode types to reduce token requirements or enable
+ * bidirectional conversion between internal and external representations.
+ */
+export function codecTool<I, O, I1, O1>(
+  tool: Tool<I, O>,
+  inputCodec: Codec<I1, I>,
+  outputCodec: Codec<O, O1>,
+): Tool<I1, O1> {
+  return {
+    ...tool,
+    action: (input: I1) => tool.action(inputCodec.encode(input)).map(outputCodec.encode),
+    examples: tool.examples?.map(example => ({
+      input: inputCodec.decode(example.input),
+      output: outputCodec.encode(example.output)
+    }))
+  };
+}
+
+/**
+ * Codec class for bidirectional conversion between types A and B
+ * @template A - The first type
+ * @template B - The second type
+ */
+export class Codec<A, B> {
+  private constructor(
+    private _encode: (a: A) => B,
+    private _decode: (b: B) => A
+  ) { }
+
+  static from<A, B>(encode: (a: A) => B, decode: (b: B) => A): Codec<A, B> {
+    return new Codec(encode, decode);
+  }
+
+  static array<I, O>(codec: Codec<I, O>): Codec<I[], O[]> {
+    return new Codec(
+      (arr: I[]) => arr.map(codec.encode),
+      (arr: O[]) => arr.map(codec.decode)
+    );
+  }
+
+  encode(a: A): B {
+    return this._encode(a);
+  }
+
+  decode(b: B): A {
+    return this._decode(b);
+  }
+
+  flip(): Codec<B, A> {
+    return new Codec(this._decode, this._encode);
+  }
 }
 
 export interface JSONSchema {
