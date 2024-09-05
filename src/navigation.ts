@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
-import { Codec, detectSchema, Tool } from './tool';
+import { Codec, detectSchema, nullSchema, Tool } from './tool';
 
 /*
 ---------------------- Navigation utilities for moving around vscode ----------------------
@@ -37,7 +37,6 @@ export function clampPosition(position: vscode.Position, document: vscode.TextDo
 
   return new vscode.Position(clampedLine, clampedCharacter);
 }
-
 
 // alias to the selected doc
 export const doc: Action<vscode.TextDocument> = liftEditor(e => e.document);
@@ -137,32 +136,6 @@ export function diagnosticContextToPrompt(context: DiagnosticContext): string {
 
   return prompt;
 }
-
-// Action to move to the next problem and extract context
-export const resolveNextProblem: Action<DiagnosticContext> = new Action(
-  async (editor: vscode.TextEditor): Promise<ActionResult<DiagnosticContext>> => {
-    // Move to next problem
-    await vscode.commands.executeCommand('editor.action.marker.next');
-
-    const pos = editor.selection.active;
-    const diagnostics = vscode.languages.getDiagnostics(editor.document.uri);
-    const currentDiagnostic = diagnostics.find(d => d.range.contains(pos));
-
-    if (currentDiagnostic) {
-      const context: DiagnosticContext = {
-        pos,
-        message: currentDiagnostic.message,
-        severity: currentDiagnostic.severity,
-        code: currentDiagnostic.code instanceof Object ? currentDiagnostic.code.value : currentDiagnostic.code,
-        source: currentDiagnostic.source,
-        relatedInformation: currentDiagnostic.relatedInformation,
-      };
-      return success(context);
-    }
-
-    return cancellation();
-  }
-);
 
 export const fileSymbols = (uri: vscode.Uri): Action<vscode.SymbolInformation[]> =>
   lift(
@@ -303,3 +276,33 @@ export const referencesTool: Tool<vscode.Location, vscode.Location[]> =
     Location.codec(),
     Codec.array(Location.codec().flip()),
   );
+
+export const nextProblemTool = Tool.create<void, DiagnosticContext>(
+  "Next Problem",
+  "Moves to the next problem in the editor and extracts its context",
+  nullSchema,
+  () => new Action(
+    async (editor: vscode.TextEditor): Promise<ActionResult<DiagnosticContext>> => {
+      // Move to next problem
+      await vscode.commands.executeCommand('editor.action.marker.next');
+
+      const pos = editor.selection.active;
+      const diagnostics = vscode.languages.getDiagnostics(editor.document.uri);
+      const currentDiagnostic = diagnostics.find(d => d.range.contains(pos));
+
+      if (currentDiagnostic) {
+        const context: DiagnosticContext = {
+          pos,
+          message: currentDiagnostic.message,
+          severity: currentDiagnostic.severity,
+          code: currentDiagnostic.code instanceof Object ? currentDiagnostic.code.value : currentDiagnostic.code,
+          source: currentDiagnostic.source,
+          relatedInformation: currentDiagnostic.relatedInformation,
+        };
+        return success(context);
+      }
+
+      return cancellation();
+    }
+  )
+);

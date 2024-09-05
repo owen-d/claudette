@@ -19,7 +19,7 @@ import {
 	getSelection,
 	getSurroundingLineRanges,
 	getSurroundingLines,
-	resolveNextProblem,
+	nextProblemTool,
 	showSymbolHierarchiesAtCursor,
 	SurroundingText,
 	symbolHierarchy,
@@ -198,7 +198,7 @@ const replaceSelectionDefinedContext = (contextLines: number | null) =>
 
 // an action which resolves the next problem then passes the surrounding 50 lines in either direction as a refactor context with additional isntructions derived from the DiagnosticContext.
 const fixNextProblem = (contextLines: number) =>
-	resolveNextProblem.bind(
+	nextProblemTool.run().bind(
 		diagnostic =>
 			// take diagnostic and resolve the n lines before and after as a range to be later used in replacement
 			getSurroundingLineRanges(doc, pure(new vscode.Range(diagnostic.pos, diagnostic.pos)), contextLines)

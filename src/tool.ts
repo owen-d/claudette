@@ -180,21 +180,23 @@ export class SchemaBuilder {
 }
 
 // Helper functions
-function createSchema(type?: JSONSchemaType): SchemaBuilder {
+export function createSchema(type?: JSONSchemaType): SchemaBuilder {
   return new SchemaBuilder(type);
 }
 
-function createStringSchema(): SchemaBuilder {
+export function createStringSchema(): SchemaBuilder {
   return new SchemaBuilder('string');
 }
 
-function createNumberSchema(): SchemaBuilder {
+export function createNumberSchema(): SchemaBuilder {
   return new SchemaBuilder('number');
 }
 
-function createArraySchema(): SchemaBuilder {
+export function createArraySchema(): SchemaBuilder {
   return new SchemaBuilder('array');
 }
+
+export const nullSchema: JSONSchema = { type: 'null' };
 
 // Example usage
 const personSchema = createSchema()
