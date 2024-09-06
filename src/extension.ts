@@ -19,10 +19,10 @@ import {
 	getSelection,
 	getSurroundingLineRanges,
 	getSurroundingLines,
+	languageDirContext,
 	nextProblemTool,
 	showSymbolHierarchiesAtCursor,
 	SurroundingText,
-	symbolHierarchy,
 } from './navigation';
 import { CompletionType, PromptInput, createPrompt } from './prompt';
 import { Command } from './types';
@@ -121,18 +121,6 @@ const streamReplace = (actionSelection: Action<vscode.Selection>, actionStream: 
 			}
 		})
 	);
-
-// Function to get language-specific directory context
-// Returns an Action that resolves to a context string based on the current document's language
-const languageDirContext = liftEditor(async editor => editor.document.languageId)
-	.bind(lang => {
-		const resolver = langs.actions?.[lang].dirCtx;
-		if (resolver === undefined) {
-			throw new Error(`language ${lang} unsupported for context lookups`);
-		}
-		return resolver;
-	})
-	.or(pure(""));
 
 // ------------- Exposed functions -------------
 

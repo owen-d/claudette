@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
 import { Codec, detectSchema, nullSchema, Tool } from './tool';
+import * as langs from './lang/lib';
 
 /*
 ---------------------- Navigation utilities for moving around vscode ----------------------
@@ -322,4 +323,25 @@ export const surroundingContextTool = Tool.create<SurroundingContextInput, Surro
     const loc = location.toVSCodeLocation();
     return getDoc(loc.uri).bind(d => getSurroundingLines(d, loc.range, surroundingLines));
   }
+);
+
+
+// Function to get language-specific directory context
+// Returns an Action that resolves to a context string based on the current document's language
+export const languageDirContext = liftEditor(async editor => editor.document.languageId)
+  .bind(lang => {
+    const resolver = langs.actions?.[lang].dirCtx;
+    if (resolver === undefined) {
+      throw new Error(`language ${lang} unsupported for context lookups`);
+    }
+    return resolver;
+  })
+  .or(pure(""));
+
+// tool to show types & signatures in cwd
+export const dirCtxTool = Tool.create<void, string>(
+  "Directory Context",
+  "Provides language-specific directory context",
+  nullSchema,
+  () => languageDirContext
 );
