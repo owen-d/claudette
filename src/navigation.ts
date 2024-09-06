@@ -58,11 +58,10 @@ export type SurroundingText = {
   after: string;
 };
 
-// Extracts the surrounding line ranges based on the target range and number of lines
-export const getSurroundingLineRanges = (doc: Action<vscode.TextDocument>, target: Action<vscode.Range>, n: number): Action<SurroundingRanges> =>
-  doc.and(target).map(([doc, r]) => {
-    const startLine = Math.max(0, r.start.line - n);
-    const endLine = Math.min(doc.lineCount - 1, r.start.line + n);
+export const getSurroundingLineRanges = (doc: vscode.TextDocument, range: vscode.Range, n: number): Action<SurroundingRanges> =>
+  liftEditor(() => {
+    const startLine = Math.max(0, range.start.line - n);
+    const endLine = Math.min(doc.lineCount - 1, range.start.line + n);
 
     const from = new vscode.Position(startLine, 0);
     const to = new vscode.Position(endLine, doc.lineAt(endLine).text.length);
@@ -71,25 +70,24 @@ export const getSurroundingLineRanges = (doc: Action<vscode.TextDocument>, targe
     const clampedTo = clampPosition(to, doc);
 
     return {
-      before: new vscode.Range(clampedFrom, r.start),
-      target: r,
-      after: new vscode.Range(r.end, clampedTo)
+      before: new vscode.Range(clampedFrom, range.start),
+      target: range,
+      after: new vscode.Range(range.end, clampedTo)
     };
   });
 
 // Resolves the ranges to text content
-export const resolveSurroundingLines = (ranges: Action<SurroundingRanges>): Action<SurroundingText> =>
-  ranges.bind((ranges) =>
-    liftEditor(async (editor) => ({
-      before: editor.document.getText(ranges.before),
-      target: editor.document.getText(ranges.target),
-      after: editor.document.getText(ranges.after)
-    }))
-  );
+export const resolveSurroundingLines = (ranges: SurroundingRanges): Action<SurroundingText> =>
+  liftEditor(editor => ({
+    before: editor.document.getText(ranges.before),
+    target: editor.document.getText(ranges.target),
+    after: editor.document.getText(ranges.after)
+  }));
 
+// change signature to (document: vscode.TextDocument, target: vscode.Range, n: number): Action<SurroundingText>
 // Combines the two functions to get surrounding lines
-export const getSurroundingLines = (document: Action<vscode.TextDocument>, target: Action<vscode.Range>, n: number): Action<SurroundingText> =>
-  resolveSurroundingLines(getSurroundingLineRanges(document, target, n));
+export const getSurroundingLines = (document: vscode.TextDocument, target: vscode.Range, n: number): Action<SurroundingText> =>
+  getSurroundingLineRanges(document, target, n).bind(resolveSurroundingLines);
 
 // Updated getAllLines function to adhere to {before, target, after} semantics
 export const getAllLines = (document: Action<vscode.TextDocument>, target: Action<vscode.Range>): Action<SurroundingText> =>
@@ -247,7 +245,7 @@ export const symbolHierarchyTool = Tool.create<Location[], SymbolInformation[][]
 );
 
 export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCursor)
-  .bind(([d, c]) => symbolHierarchyTool.run(
+  .bind(([d, c]) => symbolHierarchyTool.action(
     [Location.fromVSCodeLocation(new vscode.Location(d.uri, c))]
   ))
   .map(hierarchies => {
@@ -305,4 +303,23 @@ export const nextProblemTool = Tool.create<void, DiagnosticContext>(
       return cancellation();
     }
   )
+);
+
+export type SurroundingContextInput = {
+  surroundingLines: number,
+  location: Location,
+};
+
+// Tool to resolve the surrounding `n` lines from a location.
+export const surroundingContextTool = Tool.create<SurroundingContextInput, SurroundingText>(
+  "Surrounding Context",
+  "Extracts the surrounding context of a given location",
+  detectSchema({
+    surroundingLines: 10,
+    location: Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(10, 50))),
+  }),
+  ({ surroundingLines, location }) => {
+    const loc = location.toVSCodeLocation();
+    return getDoc(loc.uri).bind(d => getSurroundingLines(d, loc.range, surroundingLines));
+  }
 );

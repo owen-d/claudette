@@ -19,7 +19,7 @@ export class Tool<I, O> {
     return new Tool(name, description, inputSchema, actionFn, examples);
   }
 
-  run(input: I): Action<O> {
+  action(input: I): Action<O> {
     return this.actionFn(input);
   }
 
@@ -32,7 +32,7 @@ export class Tool<I, O> {
       tool.name,
       tool.description,
       tool.inputSchema,
-      (input: I1) => tool.run(inputCodec.encode(input)).map(outputCodec.encode),
+      (input: I1) => tool.action(inputCodec.encode(input)).map(outputCodec.encode),
       tool.examples?.map(example => ({
         input: inputCodec.decode(example.input),
         output: outputCodec.encode(example.output)
@@ -55,6 +55,13 @@ export class Codec<A, B> {
 
   static from<A, B>(encode: (a: A) => B, decode: (b: B) => A): Codec<A, B> {
     return new Codec(encode, decode);
+  }
+
+  static id<A>(): Codec<A, A> {
+    return new Codec<A, A>(
+      (a: A) => a,
+      (a: A) => a
+    );
   }
 
   static array<I, O>(codec: Codec<I, O>): Codec<I[], O[]> {

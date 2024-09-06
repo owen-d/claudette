@@ -38,7 +38,7 @@ const getLines = (ty: CompletionType, contextLines: number | null): Action<Surro
 	if (contextLines === null) {
 		return getAllLines(doc, base);
 	} else {
-		return getSurroundingLines(doc, base, contextLines);
+		return doc.and(base).bind(([d, r]) => getSurroundingLines(d, r, contextLines));
 	}
 };
 
@@ -198,10 +198,10 @@ const replaceSelectionDefinedContext = (contextLines: number | null) =>
 
 // an action which resolves the next problem then passes the surrounding 50 lines in either direction as a refactor context with additional isntructions derived from the DiagnosticContext.
 const fixNextProblem = (contextLines: number) =>
-	nextProblemTool.run().bind(
-		diagnostic =>
+	nextProblemTool.action().and(doc).bind(
+		([diagnostic, document]) =>
 			// take diagnostic and resolve the n lines before and after as a range to be later used in replacement
-			getSurroundingLineRanges(doc, pure(new vscode.Range(diagnostic.pos, diagnostic.pos)), contextLines)
+			getSurroundingLineRanges(document, new vscode.Range(diagnostic.pos, diagnostic.pos), contextLines)
 				.bind(({ before, after }) => liftEditor(
 					async (editor) => {
 						const combined = before.union(after);
@@ -209,7 +209,7 @@ const fixNextProblem = (contextLines: number) =>
 						const text = editor.document.getText(combined);
 						return { diagnostic, text, sel };
 					},
-				))
+				)),
 	).bind(
 		({ diagnostic, text, sel }) => {
 			const stream = dispatchPrompt({
