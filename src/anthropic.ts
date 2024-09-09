@@ -60,6 +60,27 @@ export function decideTool<T extends Tool<any, any>[]>(
   prompt: string,
   ...tools: [...T]
 ): Action<UnwrapTool<T[number]>> {
+
+  // Inspired by the following example
+  // -------------------------------
+  // type Wrapper<T> = { val: T };
+
+  // type UnwrapWrapper<T> = T extends Wrapper<infer U> ? U : never;
+
+  // function foo<T extends Wrapper<any>[]>(...xs: [...T]): Wrapper<UnwrapWrapper<T[number]>> {
+  //   const randomIndex = Math.floor(Math.random() * xs.length);
+  //   return xs[randomIndex];
+  // }
+
+  // function bar() {
+  //   let res = foo(
+  //     { val: 1 },
+  //     { val: "a" },
+  //   );
+  // }
+  // -------------------------------
+
+
   return lift(async () => {
     try {
       return await anthropic.messages.create({

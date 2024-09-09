@@ -333,18 +333,3 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 }
 
-type Wrapper<T> = { val: T };
-
-type UnwrapWrapper<T> = T extends Wrapper<infer U> ? U : never;
-
-function foo<T extends Wrapper<any>[]>(...xs: [...T]): Wrapper<UnwrapWrapper<T[number]>> {
-	const randomIndex = Math.floor(Math.random() * xs.length);
-	return xs[randomIndex];
-}
-
-function bar() {
-	let res = foo(
-		{ val: 1 },
-		{ val: "a" },
-	);
-}
