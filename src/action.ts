@@ -85,10 +85,10 @@ export class Action<A> {
     });
   }
 
-}
+  debug(): Action<A> {
+    return this.sideEffect(x => console.log(JSON.stringify(x, null, 2)));
+  }
 
-export function pure<A>(a: A): Action<A> {
-  return new Action(async () => ({ type: 'success', value: a }));
 }
 
 export function fail<A>(message: string = "Operation failed"): Action<A> {
@@ -123,6 +123,10 @@ export function liftEditor<A>(f: (editor: vscode.TextEditor) => MaybePromise<A>)
 export function lift<A>(f: () => MaybePromise<A>): Action<A> {
   // take advantage of not needing the editor
   return liftEditor(f);
+}
+
+export function pure<A>(x: MaybePromise<A>): Action<A> {
+  return lift(() => x);
 }
 
 // Traverse an array with an action-returning function

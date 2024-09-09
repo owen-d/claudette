@@ -239,7 +239,7 @@ class SymbolInformation {
 
 // Update symbolHierarchyTool to use wrapped types
 export const symbolHierarchyTool = Tool.create<Location[], SymbolInformation[][]>(
-  "Symbol Hierarchy",
+  "symbol_hierarchy",
   "Finds the symbol hierarchy for one or more locations in the code",
   detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
   (locations) => traverse(locations, (loc) => symbolHierarchy(loc.toVSCodeLocation()).map(symbols => symbols.map(SymbolInformation.fromVSCodeSymbolInformation)))
@@ -260,7 +260,7 @@ export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCurs
 export const referencesTool: Tool<vscode.Location, vscode.Location[]> =
   Tool.wrap(
     Tool.create<Location, Location[]>(
-      "References",
+      "references",
       "Finds all references to a symbol at a given location",
       detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
       (location) => liftEditor(async (editor) => {
@@ -277,7 +277,7 @@ export const referencesTool: Tool<vscode.Location, vscode.Location[]> =
   );
 
 export const nextProblemTool = Tool.create<void, DiagnosticContext>(
-  "Next Problem",
+  "next_problem",
   "Moves to the next problem in the editor and extracts its context",
   nullSchema,
   () => new Action(
@@ -313,7 +313,7 @@ export type SurroundingContextInput = {
 
 // Tool to resolve the surrounding `n` lines from a location.
 export const surroundingContextTool = Tool.create<SurroundingContextInput, SurroundingText>(
-  "Surrounding Context",
+  "surrounding_ctx",
   "Extracts the surrounding context of a given location",
   detectSchema({
     surroundingLines: 10,
@@ -324,7 +324,6 @@ export const surroundingContextTool = Tool.create<SurroundingContextInput, Surro
     return getDoc(loc.uri).bind(d => getSurroundingLines(d, loc.range, surroundingLines));
   }
 );
-
 
 // Function to get language-specific directory context
 // Returns an Action that resolves to a context string based on the current document's language
@@ -340,7 +339,7 @@ export const languageDirContext = liftEditor(async editor => editor.document.lan
 
 // tool to show types & signatures in cwd
 export const dirCtxTool = Tool.create<void, string>(
-  "Directory Context",
+  "directory_ctx",
   "Provides language-specific directory context",
   nullSchema,
   () => languageDirContext

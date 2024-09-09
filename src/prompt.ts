@@ -1,3 +1,5 @@
+import { Tool } from "./tool";
+
 export type CompletionType = "selection" | "cursor" | "comment";
 
 type CursorPrompt = {
@@ -23,6 +25,12 @@ type CommentPrompt = {
    afterCursor: string;
    context?: string;
    instruction?: string;
+};
+
+type ToolPrompt = {
+   type: 'tool',
+   tools: Tool<any, any>[],
+   goal: string,
 };
 
 export type PromptInput = CursorPrompt | RefactorPrompt | CommentPrompt;
@@ -174,3 +182,24 @@ ${opts.instruction ? `<instruction>${opts.instruction}</instruction>` : ''}
 
 Your response should begin exactly where <cursor/> is placed, providing only the necessary comments for the immediate context.`;
 }
+
+// Create a prompt for tool based function calling.
+// Each tool is explained via it's description, inputSchema,
+// and any examples are included as input->output mapping pairs.
+export function createToolPrompt(opts: ToolPrompt): string {
+   return `You are an AI assistant with access to the following tools:
+
+${opts.tools.map((tool, index) => `Tool ${index + 1}: ${tool.name}
+Description: ${tool.description}
+Input Schema: ${JSON.stringify(tool.inputSchema, null, 2)}
+${tool.examples && tool.examples.length > 0 ? `Examples:
+${tool.examples.map((example, exIndex) => `  Example ${exIndex + 1}:
+    Input: ${JSON.stringify(example.input)}
+    Output: ${JSON.stringify(example.output)}`).join('\n')}` : ''}
+`).join('\n')}
+Your goal is: ${opts.goal}
+
+Call them most likely tool to help you achieve your goal.
+Do not reflect on the quality of the returned search results in your response.`;
+}
+

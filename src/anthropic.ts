@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { TextBlock } from '@anthropic-ai/sdk/resources/messages.mjs';
+import { Tool } from './tool';
+import { Action, fail, lift, pure } from './action';
 
 
 
@@ -20,6 +22,13 @@ const anthropic = new Anthropic({
   apiKey: ANTHROPIC_API_KEY,
 });
 
+const baseOpts = {
+  model: 'claude-3-5-sonnet-20240620',
+  max_tokens: 1000,
+  temperature: 0.7,
+  system: SYSTEM_PROMPT,
+};
+
 export type TextStream = AsyncGenerator<string, void, unknown>;
 
 // Streaming function
@@ -27,14 +36,11 @@ export async function* streamText(prompt: string): TextStream {
   // console.debug(prompt)
   try {
     const stream = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
-      max_tokens: 1000,
-      temperature: 0.7,
-      system: SYSTEM_PROMPT,
+      ...baseOpts,
       messages: [
         { role: 'user', content: prompt }
       ],
-      stream: true
+      stream: true,
     });
 
     for await (const chunk of stream) {
@@ -46,4 +52,63 @@ export async function* streamText(prompt: string): TextStream {
     console.error('Error streaming from Claude API:', error);
     throw error;
   }
+}
+
+type UnwrapTool<T> = T extends Tool<infer I, infer O> ? { tool: Tool<I, O>, input: I; output: O } : never;
+
+export function decideTool<T extends Tool<any, any>[]>(
+  prompt: string,
+  ...tools: [...T]
+): Action<UnwrapTool<T[number]>> {
+  return lift(async () => {
+    try {
+      return await anthropic.messages.create({
+        ...baseOpts,
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        tool_choice: {
+          type: 'any'
+        },
+        tools: tools.map(({ name, description, inputSchema }) => ({
+          name,
+          description,
+          input_schema: inputSchema as Anthropic.Tool.InputSchema,
+        }))
+      });
+    } catch (error) {
+      console.error('Error deciding tool:', error);
+      throw error;
+    }
+  })
+    .bind(({ content }) => {
+      const output = content.reduce<{ text: Anthropic.Messages.TextBlock[], toolUse: Anthropic.Messages.ToolUseBlock[] }>(
+        (acc, cur) => {
+          if (cur.type === 'text') {
+            acc.text.push(cur);
+          } else {
+            acc.toolUse.push(cur);
+          }
+          return acc;
+        },
+        { text: [], toolUse: [] },
+      );
+
+      const call = output.toolUse[0];
+      if (!call) {
+        return fail('No tool was chosen');
+      }
+
+      const chosen = tools.find(t => t.name === call.name);
+      if (!chosen) {
+        return fail(`Chosen tool ${call.name} not found in provided tools`);
+      }
+
+      return chosen.action(call.input)
+        .map(output => ({
+          input: call.input,
+          tool: chosen,
+          output,
+        }) as UnwrapTool<T[number]>);
+    });
 }

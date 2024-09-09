@@ -9,10 +9,11 @@ import {
 	pure,
 	sequence
 } from './action';
-import { TextStream, streamText } from './anthropic';
+import { TextStream, decideTool, streamText } from './anthropic';
 import * as langs from './lang/lib';
 import {
 	diagnosticContextToPrompt,
+	dirCtxTool,
 	doc,
 	getAllLines,
 	getCursor,
@@ -21,10 +22,13 @@ import {
 	getSurroundingLines,
 	languageDirContext,
 	nextProblemTool,
+	referencesTool,
 	showSymbolHierarchiesAtCursor,
+	surroundingContextTool,
 	SurroundingText,
+	symbolHierarchyTool,
 } from './navigation';
-import { CompletionType, PromptInput, createPrompt } from './prompt';
+import { CompletionType, PromptInput, createPrompt, createToolPrompt } from './prompt';
 import { Command } from './types';
 
 
@@ -278,13 +282,35 @@ class App {
 			{ name: 'repeat', action: this.repeat },
 
 			// development
-			{ name: 'wip', action: showSymbolHierarchiesAtCursor },
+			{ name: 'wip', action: toolDispatch('find the next error in file') },
 
 			...langs.languages.flatMap(l => l.commands),
 		];
 	}
 
 }
+
+
+export const toolDispatch = (goal: string): Action<void> => {
+	const tools = [
+		// symbolHierarchyTool,
+		referencesTool,
+		nextProblemTool,
+		// surroundingContextTool,
+		// dirCtxTool,
+	];
+	let prompt = createToolPrompt({
+		type: 'tool',
+		goal,
+		tools: tools,
+	});
+
+	let x = decideTool(prompt, ...tools);
+
+	return decideTool(prompt, ...tools)
+		.debug()
+		.map(({ input, output }) => undefined);
+};
 
 // Export the activate function
 // This function is called when the extension is activated
@@ -305,4 +331,20 @@ export function activate(context: vscode.ExtensionContext) {
 			})
 		);
 	});
+}
+
+type Wrapper<T> = { val: T };
+
+type UnwrapWrapper<T> = T extends Wrapper<infer U> ? U : never;
+
+function foo<T extends Wrapper<any>[]>(...xs: [...T]): Wrapper<UnwrapWrapper<T[number]>> {
+	const randomIndex = Math.floor(Math.random() * xs.length);
+	return xs[randomIndex];
+}
+
+function bar() {
+	let res = foo(
+		{ val: 1 },
+		{ val: "a" },
+	);
 }

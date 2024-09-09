@@ -203,7 +203,12 @@ export function createArraySchema(): SchemaBuilder {
   return new SchemaBuilder('array');
 }
 
-export const nullSchema: JSONSchema = { type: 'null' };
+export function createObjectSchema(): SchemaBuilder {
+  return new SchemaBuilder('object');
+}
+
+// NB: anthropic requires object schemas, so we model tools without arguments as a function of a single keyless object.
+export const nullSchema: JSONSchema = createObjectSchema().build();
 
 // Example usage
 const personSchema = createSchema()
