@@ -85,8 +85,13 @@ export class Action<A> {
     });
   }
 
-  debug(): Action<A> {
-    return this.sideEffect(x => console.log(JSON.stringify(x, null, 2)));
+  debug(message?: string): Action<A> {
+    return this.sideEffect(x => {
+      if (message) {
+        console.log(message);
+      }
+      console.log(JSON.stringify(x, null, 2));
+    });
   }
 
 }

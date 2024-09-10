@@ -30,6 +30,7 @@ import {
 } from './navigation';
 import { CompletionType, PromptInput, createPrompt, createToolPrompt } from './prompt';
 import { Command } from './types';
+import { Tool } from './tool';
 
 
 // Updated utility function to get either all lines or recent lines based on a parameter
@@ -282,7 +283,7 @@ class App {
 			{ name: 'repeat', action: this.repeat },
 
 			// development
-			{ name: 'wip', action: toolDispatch('find the next error in file') },
+			{ name: 'wip', action: allToolsDispatch('find the next error in file') },
 
 			...langs.languages.flatMap(l => l.commands),
 		];
@@ -290,15 +291,22 @@ class App {
 
 }
 
-
-export const toolDispatch = (goal: string): Action<void> => {
+export const allToolsDispatch = (goal: string): Action<void> => {
 	const tools = [
-		// symbolHierarchyTool,
+		symbolHierarchyTool,
 		referencesTool,
 		nextProblemTool,
-		// surroundingContextTool,
-		// dirCtxTool,
+		surroundingContextTool,
+		dirCtxTool,
 	];
+
+	return toolDispatch(goal, ...tools)
+		.debug("tool choice")
+		.map(({ input, output }) => undefined);
+};
+
+
+export const toolDispatch = (goal: string, ...tools: Tool<any, any>[]) => {
 	let prompt = createToolPrompt({
 		type: 'tool',
 		goal,
@@ -307,9 +315,7 @@ export const toolDispatch = (goal: string): Action<void> => {
 
 	let x = decideTool(prompt, ...tools);
 
-	return decideTool(prompt, ...tools)
-		.debug()
-		.map(({ input, output }) => undefined);
+	return decideTool(prompt, ...tools);
 };
 
 // Export the activate function
