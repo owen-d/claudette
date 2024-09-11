@@ -19,6 +19,14 @@ export function success<A>(a: A): ActionResult<A> {
 export class Action<A> {
   constructor(private readonly run: (editor: vscode.TextEditor) => Promise<ActionResult<A>>) { }
 
+  static cancel<A>(): Action<A> {
+    return cancel<A>();
+  }
+
+  static fail<A>(message: string = "Operation failed"): Action<A> {
+    return fail<A>(message);
+  }
+
   // Execute the action
   async execute(editor: vscode.TextEditor): Promise<ActionResult<A>> {
     return this.run(editor);
@@ -96,7 +104,7 @@ export class Action<A> {
 
 }
 
-export function fail<A>(message: string = "Operation failed"): Action<A> {
+export function fail<A>(message: string): Action<A> {
   return new Action(async () => {
     throw new Error(message);
   });

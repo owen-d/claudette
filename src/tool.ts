@@ -19,10 +19,6 @@ export class Tool<I, O> {
     return new Tool(name, description, inputSchema, actionFn, examples);
   }
 
-  action(input: I): Action<O> {
-    return this.actionFn(input);
-  }
-
   static wrap<I, I1, O, O1>(
     tool: Tool<I, O>,
     inputCodec: Codec<I1, I>,
@@ -37,6 +33,19 @@ export class Tool<I, O> {
         input: inputCodec.decode(example.input),
         output: outputCodec.encode(example.output)
       }))
+    );
+  }
+
+  action(input: I): Action<O> {
+    return this.actionFn(input);
+  }
+
+  map<O2>(f: (_: O) => O2): Tool<I, O2> {
+    return Tool.create(
+      this.name,
+      this.description,
+      this.inputSchema,
+      i => this.action(i).map(f)
     );
   }
 }
