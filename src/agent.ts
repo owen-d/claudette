@@ -32,6 +32,7 @@ export class Agent {
   private rounds: number;
   private maxRounds: number;
   private messageHistory: any[];
+  private plan: string = '';
 
   private constructor(opts: AgentOpts) {
     this.goal = opts.goal;
@@ -69,37 +70,26 @@ export class Agent {
   private toolkit() {
     const intermediates = Agent._stepMap(
       StepType.Intermediate,
-      // symbolHierarchyTool,
-      // referencesTool,
+      symbolHierarchyTool,
+      referencesTool,
       nextProblemTool,
-      // surroundingContextTool,
-      // dirCtxTool,
+      surroundingContextTool,
+      dirCtxTool,
       // internal tools 
-      // this.plan(),
+      setPlanTool.sideEffect(
+        ({ plan }) => {
+          this.plan = plan;
+        }
+      ),
     );
 
     const finalSteps = Agent._stepMap(
       StepType.Finished,
       // internal tools
-      // finishTool,
+      finishTool.debug('Finished tool'),
     );
 
     return [...intermediates, ...finalSteps];
-  }
-
-
-  // buildPlanTool is a way for the agent to "think" about the steps it needs to take
-  // in order to accomplish a goal. This plan can then be referred to|updated in later steps
-  // to maintain relevant context.
-  private plan(): Tool<Plan, Plan> {
-    return Tool.create<Plan, Plan>(
-      'setPlan',
-      'Set (create|update) a plan of steps to accomplish the given goal',
-      detectSchema({
-        plan: "To get the square of double the input, first multiply it by two then multiply that by itself.",
-      }),
-      pure,
-    );
   }
 
   private prompt(): string {
@@ -122,7 +112,7 @@ export class Agent {
         this.prompt(),
         ...this.toolkit(),
       ))
-      .bind(({ output: { type, val } }) => {
+      .bind(({ tool, input, output: { type, val } }) => {
         if (type === StepType.Finished) {
           // done?
           return pure(undefined);
@@ -136,17 +126,15 @@ export class Agent {
 
 }
 
-type StepAction<T> = Action<Step<T>>;
+type Step<T> = {
+  type: StepType,
+  val: T,
+};
 
 enum StepType {
   Intermediate,
   Finished,
 }
-
-type Step<T> = {
-  type: StepType,
-  val: T,
-};
 
 type Plan = {
   plan: string,
@@ -156,8 +144,7 @@ type FinishToolInput = {
   summary?: string
 };
 
-// finishTool creates a tool whose calling indicates the completion of an agent's
-// work.
+// a tool whose calling indicates the completion of an agent's work
 const finishTool = Tool.create<FinishToolInput, Step<string | undefined>>(
   'finish',
   'Indicate that the agent has completed its task',
@@ -168,6 +155,16 @@ const finishTool = Tool.create<FinishToolInput, Step<string | undefined>>(
     type: StepType.Finished,
     val: x.summary,
   }),
+);
+
+// a tool for setting or updating a plan
+const setPlanTool = Tool.create<Plan, Plan>(
+  'setPlan',
+  'Set (create|update) a plan of steps to accomplish the given goal',
+  detectSchema({
+    plan: "To get the square of double the input, first multiply it by two then multiply that by itself.",
+  }),
+  pure,
 );
 
 

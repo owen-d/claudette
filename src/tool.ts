@@ -40,14 +40,32 @@ export class Tool<I, O> {
     return this.actionFn(input);
   }
 
+  // map the output of a tool's action
   map<O2>(f: (_: O) => O2): Tool<I, O2> {
+    return this.mapA(a => a.map(f));
+  }
+
+  // map on the underlying action; usually to get access
+  // to the action itself as an arg to use it's methods.
+  mapA<O2>(f: (a: Action<O>) => Action<O2>): Tool<I, O2> {
     return Tool.create(
       this.name,
       this.description,
       this.inputSchema,
-      i => this.action(i).map(f)
+      i => f(this.action(i))
     );
   }
+
+  // sideEffect can perform a side effect with the output
+  sideEffect(f: (a: O) => void): Tool<I, O> {
+    return this.mapA(action => action.sideEffect(f));
+  }
+
+  // debug 
+  debug(message?: string): Tool<I, O> {
+    return this.mapA(a => a.debug(message));
+  }
+
 }
 
 
