@@ -31,7 +31,7 @@ export class Agent {
   private goal: string;
   private rounds: number;
   private maxRounds: number;
-  private messageHistory: any[];
+  private messageHistory: Message[];
   private plan: string = '';
 
   private constructor(opts: AgentOpts) {
@@ -92,12 +92,50 @@ export class Agent {
     return [...intermediates, ...finalSteps];
   }
 
-  private prompt(): string {
-    return createToolPrompt({
-      type: 'tool',
-      goal: this.goal,
-      tools: this.toolkit(),
-    });
+  /** 
+   * Creates a prompt with the following information:
+   * Preamble, explaining it's a code assistant & it's task is to build a plan and ultimately solve an arbitrary goal with a set of tools
+   * the goal (if present)
+   * the plan (if present)
+   * Directory context (resolved via dirCtx tool)
+   * The past 6 message from history
+   * Detailed instructions for how to proceed:
+   * Build a plan -> follow it & continually update the plan
+   */
+  private prompt(): Action<string> {
+    return dirCtxTool.action()
+      .map(dirCtx => {
+        const preamble = `<preamble>You are an AI code assistant. Your task is to build a plan and solve an arbitrary goal using the provided tools.</preamble>`;
+
+        const goalSection = this.goal ? `<goal>${this.goal}</goal>` : '';
+        const planSection = this.plan ? `<plan>${this.plan}</plan>` : '';
+
+        const dirContextSection = `<context>Following is the dirContext block containing all the function signatures in the current folder:
+<dirContext>${dirCtx}</dirContext></context>`;
+
+        const historySection = `<history>${this.messageHistory.slice(-6).map(msg => `<message user="${msg.user}">${msg.msg}</message>`).join('')}</history>`;
+
+        const instructions = `<instructions>
+1. Review the goal and current plan (if any).
+2. If no plan exists, create one to achieve the goal.
+3. Follow the plan, updating it as needed.
+4. Use the provided tools to gather information and make changes.
+5. Continually reassess and adjust the plan based on new information.
+6. When the goal is achieved, use the finish tool to complete the task.
+</instructions>`;
+
+
+        const res = `${preamble}
+${goalSection}
+${planSection}
+${dirContextSection}
+${historySection}
+${instructions}`;
+
+        console.log(`res: ${res.length}, preamble: ${preamble.length}, goal: ${goalSection.length}, plan: ${planSection.length}, dirContext: ${dirContextSection.length}, history: ${historySection.length}, instructions: ${instructions.length}`);
+
+        return res;
+      });
   }
 
   step(): Action<void> {
@@ -108,12 +146,26 @@ export class Agent {
         return Action.fail("Max rounds reached");
       }
     })
-      .bind(() => decideTool(
-        this.prompt(),
+      .bind(() => this.prompt())
+      .bind(prompt => decideTool(
+        prompt,
         ...this.toolkit(),
       ))
-      .bind(({ tool, input, output: { type, val } }) => {
-        if (type === StepType.Finished) {
+      .debug()
+      .bind(({ tool, input, output }) => {
+        this.messageHistory.push(
+          {
+            user: 'user',
+            msg: JSON.stringify(input),
+          },
+          {
+            user: 'assistant',
+            tool: tool.name,
+            msg: JSON.stringify(output)
+          },
+        );
+
+        if (output.type === StepType.Finished) {
           // done?
           return pure(undefined);
         }
@@ -123,8 +175,13 @@ export class Agent {
 
       });
   }
-
 }
+
+type Message = {
+  tool?: string,
+  user: 'system' | 'user' | 'assistant',
+  msg: string,
+};
 
 type Step<T> = {
   type: StepType,

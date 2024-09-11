@@ -28,9 +28,10 @@ import {
 	SurroundingText,
 	symbolHierarchyTool,
 } from './navigation';
-import { CompletionType, PromptInput, createPrompt, createToolPrompt } from './prompt';
+import { CompletionType, PromptInput, createPrompt } from './prompt';
 import { Command } from './types';
 import { Tool } from './tool';
+import { Agent } from './agent';
 
 
 // Updated utility function to get either all lines or recent lines based on a parameter
@@ -217,6 +218,13 @@ const fixNextProblem = (contextLines: number) =>
 	);
 
 
+const wip = promptUser({
+	prompt: 'Enter goal',
+	placeHolder: 'e.g., Add an optional argument & update dependencies',
+}).bind(goal => {
+	return Agent.create({ goal, }).step();
+});
+
 
 // Class representing the main application
 // Implements the Singleton pattern to ensure only one instance exists
@@ -283,40 +291,13 @@ class App {
 			{ name: 'repeat', action: this.repeat },
 
 			// development
-			{ name: 'wip', action: allToolsDispatch('find the next error in file') },
+			{ name: 'wip', action: wip, },
 
 			...langs.languages.flatMap(l => l.commands),
 		];
 	}
 
 }
-
-export const allToolsDispatch = (goal: string): Action<void> => {
-	const tools = [
-		symbolHierarchyTool,
-		referencesTool,
-		nextProblemTool,
-		surroundingContextTool,
-		dirCtxTool,
-	];
-
-	return toolDispatch(goal, ...tools)
-		.debug("tool choice")
-		.map(({ input, output }) => undefined);
-};
-
-
-export const toolDispatch = (goal: string, ...tools: Tool<any, any>[]) => {
-	let prompt = createToolPrompt({
-		type: 'tool',
-		goal,
-		tools: tools,
-	});
-
-	let x = decideTool(prompt, ...tools);
-
-	return decideTool(prompt, ...tools);
-};
 
 // Export the activate function
 // This function is called when the extension is activated
