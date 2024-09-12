@@ -132,11 +132,12 @@ ${instructions}`;
 
   step() {
     // first we check if there's been too many steps
-    return pure(() => {
+    return pure(undefined).bind(() => {
       this.rounds++;
       if (this.rounds > this.maxRounds) {
         return Action.fail("Max rounds reached");
       }
+      return pure(undefined);
     })
       .bind(() => this.prompt())
       .bind(prompt => decideTool(
