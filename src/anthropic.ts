@@ -91,10 +91,10 @@ export function decideTool<T extends Tool<any, any>[]>(
         tool_choice: {
           type: 'any'
         },
-        tools: tools.map(({ name, description, inputSchema }) => ({
-          name,
-          description,
-          input_schema: inputSchema as Anthropic.Tool.InputSchema,
+        tools: tools.map(t => ({
+          name: t.name,
+          description: t.descriptionWithExamples().join('\n'),
+          input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
         }))
       });
     } catch (error) {
@@ -124,6 +124,8 @@ export function decideTool<T extends Tool<any, any>[]>(
       if (!chosen) {
         return fail(`Chosen tool ${call.name} not found in provided tools`);
       }
+
+      console.log(`calling tool ${call.name} with ${JSON.stringify(call.input)}`);
 
       return chosen.action(call.input)
         .map(output => ({

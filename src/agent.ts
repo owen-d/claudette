@@ -1,7 +1,7 @@
-import { Action, lift, pure } from "./action";
+import * as vscode from 'vscode';
+import { Action, cancel, lift, liftEditor, pure } from "./action";
 import { decideTool } from "./anthropic";
-import { dirCtxTool, nextProblemTool, referencesTool, surroundingContextTool, symbolHierarchyTool } from "./navigation";
-import { createToolPrompt } from "./prompt";
+import { cursorLocationTool, dirCtxTool, nextProblemTool, referencesTool, surroundingContextTool, symbolHierarchyTool } from "./navigation";
 import { createObjectSchema, createStringSchema, detectSchema, Tool } from "./tool";
 
 /** File for multi-round, agentic reasoning
@@ -37,7 +37,7 @@ export class Agent {
   private constructor(opts: AgentOpts) {
     this.goal = opts.goal;
     this.rounds = 0;
-    this.maxRounds = opts.maxRounds ?? 10;
+    this.maxRounds = opts.maxRounds ?? 4;
     this.messageHistory = [];
   }
 
@@ -70,6 +70,7 @@ export class Agent {
   private toolkit() {
     const intermediates = Agent._stepMap(
       StepType.Intermediate,
+      cursorLocationTool,
       symbolHierarchyTool,
       referencesTool,
       nextProblemTool,
@@ -110,8 +111,8 @@ export class Agent {
         const goalSection = this.goal ? `<goal>${this.goal}</goal>` : '';
         const planSection = this.plan ? `<plan>${this.plan}</plan>` : '';
 
-        const dirContextSection = `<context>Following is the dirContext block containing all the function signatures in the current folder:
-<dirContext>${dirCtx}</dirContext></context>`;
+        // const dirContextSection = `<context>Following is the dirContext block containing all the function signatures in the current folder:
+        // <dirContext>${dirCtx}</dirContext></context>`;
 
         const historySection = `<history>${this.messageHistory.slice(-6).map(msg => `<message user="${msg.user}">${msg.msg}</message>`).join('')}</history>`;
 
@@ -122,23 +123,23 @@ export class Agent {
 4. Use the provided tools to gather information and make changes.
 5. Continually reassess and adjust the plan based on new information.
 6. When the goal is achieved, use the finish tool to complete the task.
+7. Remember to account for tool input & output schemas. They're often meant to be used together, for instance the 'cursorLocationTool' returns the location at the cursor, whose output can be sent to the 'symbolHierarchyTool' to lookup the symbols the cursor is within.
 </instructions>`;
 
 
         const res = `${preamble}
 ${goalSection}
 ${planSection}
-${dirContextSection}
 ${historySection}
 ${instructions}`;
 
-        console.log(`res: ${res.length}, preamble: ${preamble.length}, goal: ${goalSection.length}, plan: ${planSection.length}, dirContext: ${dirContextSection.length}, history: ${historySection.length}, instructions: ${instructions.length}`);
-
+        console.log(`sending prompt: ${res}`);
         return res;
       });
+
   }
 
-  step(): Action<void> {
+  step() {
     // first we check if there's been too many steps
     return pure(() => {
       this.rounds++;
@@ -151,8 +152,7 @@ ${instructions}`;
         prompt,
         ...this.toolkit(),
       ))
-      .debug()
-      .bind(({ tool, input, output }) => {
+      .sideEffect(({ tool, input, output }) => {
         this.messageHistory.push(
           {
             user: 'user',
@@ -164,18 +164,75 @@ ${instructions}`;
             msg: JSON.stringify(output)
           },
         );
+      });
+  }
 
-        if (output.type === StepType.Finished) {
-          // done?
+  private recurse(): Action<void> {
+    const a = this.step().map(
+      ({ tool, input, output: { type, val } }) => ({
+        type,
+        tool: tool.name,
+        input,
+        val,
+      }),
+    );
+    return continueAction(a)
+      .bind(({ type }) => {
+        if (type === StepType.Finished) {
           return pure(undefined);
+        } else {
+          console.log('recursing');
+          return this.recurse();
         }
+      });
+  }
 
-        // do smtn with intermediate step?
-        return pure(undefined);
-
+  static run(): Action<void> {
+    return promptUserTool.action({
+      prompt: 'Enter goal',
+      placeHolder: 'e.g., Add an optional argument & update dependencies',
+    })
+      .bind(goal => {
+        let agent = Agent.create({ goal, });
+        return agent.recurse()
+          .sideEffect(() => {
+            console.log("finished!");
+            console.log(agent.goal);
+            console.log(agent.messageHistory);
+          });
       });
   }
 }
+
+
+// prompt the user if they want to coninue based on the result
+function continueAction<A extends Step<any>>(a: Action<A>): Action<A> {
+  return a.bind(result =>
+    lift(async () => {
+      // Show the result in a buffer
+      await vscode.window.showTextDocument(vscode.Uri.parse(`untitled:result.json`), { preview: false })
+        .then(editor =>
+          editor.edit(editBuilder => {
+            // to show the str forms of enums
+            const mapped = {
+              ...result,
+              type: StepType[result.type],
+            };
+            editBuilder.insert(new vscode.Position(0, 0), JSON.stringify(mapped, null, 2));
+          })
+        );
+    }).bind(() =>
+      promptUserTool.action({
+        prompt: `Operation completed. Continue?`,
+        placeHolder: 'yes/no, y/n ',
+      }).map(answer => answer.toLowerCase().startsWith('y'))
+    ).bind(shouldContinue =>
+      shouldContinue ? pure(result) : cancel<A>()
+    )
+  );
+}
+
+
 
 type Message = {
   tool?: string,
@@ -222,6 +279,18 @@ const setPlanTool = Tool.create<Plan, Plan>(
     plan: "To get the square of double the input, first multiply it by two then multiply that by itself.",
   }),
   pure,
+);
+
+export const promptUserTool = Tool.create<vscode.InputBoxOptions, string>(
+  'promptUser',
+  'Prompt the user for input',
+  createObjectSchema()
+    .property('prompt', createStringSchema().build())
+    .property('placeHolder', createStringSchema().build())
+    .build(),
+  opts => liftEditor(
+    async (editor) => vscode.window.showInputBox(opts)
+  ).bind(x => x === undefined ? cancel<string>() : pure(x))
 );
 
 

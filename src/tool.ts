@@ -36,6 +36,18 @@ export class Tool<I, O> {
     );
   }
 
+  // descriptionWithExamples returns list of lines containing the examples,
+  // intended to be joined but allowing indentation to be set by the caller
+  descriptionWithExamples(): string[] {
+    const lines = [this.description, '', 'Examples:'];
+    this.examples.forEach((ex, index) => {
+      if (index > 0) { lines.push(''); }
+      lines.push(`Input: ${JSON.stringify(ex.input)}`);
+      lines.push(`Output: ${JSON.stringify(ex.output)}`);
+    });
+    return lines;
+  }
+
   action(input: I): Action<O> {
     return this.actionFn(input);
   }

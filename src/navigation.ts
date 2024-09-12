@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
-import { Codec, detectSchema, nullSchema, Tool } from './tool';
+import { Codec, createNumberSchema, createObjectSchema, detectSchema, nullSchema, Tool } from './tool';
 import * as langs from './lang/lib';
 
 /*
@@ -40,7 +40,7 @@ export function clampPosition(position: vscode.Position, document: vscode.TextDo
 }
 
 // alias to the selected doc
-export const doc: Action<vscode.TextDocument> = liftEditor(e => e.document);
+export const currentDoc: Action<vscode.TextDocument> = liftEditor(e => e.document);
 
 // lookup a specific doc
 export const getDoc = (uri: vscode.Uri) => lift(async () => vscode.workspace.openTextDocument(uri));
@@ -159,28 +159,13 @@ export const symbolHierarchy = (loc: vscode.Location) => fileSymbols(loc.uri)
 
 /**
  * Location class represents a position in a file
- * @property {string} uri - The file path
- * @property {Object} range - The range in the file
- * @property {Object} range.start - Start position
- * @property {number} range.start.line - Start line number
- * @property {number} range.start.character - Start character number
- * @property {Object} range.end - End position
- * @property {number} range.end.line - End line number
- * @property {number} range.end.character - End character number
+ * We enforce static methods because Location is used in tool I/O
+ * and tools just send data, not class instantiations. While we could
+ * handle this, I'm preferring to treat classes like
+ * these as coupled data-type + associated functions.
  */
 class Location {
   constructor(public uri: string, public range: { start: { line: number, character: number }, end: { line: number, character: number } }) { }
-
-  /**
- * Provides a codec for bidirectional conversion between vscode.Location and Location
- * @returns {Codec<vscode.Location, Location>} A codec object with encode and decode methods
- */
-  static codec(): Codec<vscode.Location, Location> {
-    return Codec.from(
-      (vscodeLocation: vscode.Location) => Location.fromVSCodeLocation(vscodeLocation),
-      (location: Location) => location.toVSCodeLocation()
-    );
-  }
 
   static fromVSCodeLocation(location: vscode.Location): Location {
     return new Location(
@@ -192,12 +177,12 @@ class Location {
     );
   }
 
-  toVSCodeLocation(): vscode.Location {
+  static toVSCodeLocation(location: Location): vscode.Location {
     return new vscode.Location(
-      vscode.Uri.file(this.uri),
+      vscode.Uri.file(location.uri),
       new vscode.Range(
-        new vscode.Position(this.range.start.line, this.range.start.character),
-        new vscode.Position(this.range.end.line, this.range.end.character)
+        new vscode.Position(location.range.start.line, location.range.start.character),
+        new vscode.Position(location.range.end.line, location.range.end.character)
       )
     );
   }
@@ -205,19 +190,9 @@ class Location {
 
 /**
  * SymbolInformation class represents a symbol in the code
- * @property {string} name - The name of the symbol
- * @property {vscode.SymbolKind} kind - The kind of symbol (e.g., function, variable)
- * @property {Location} location - The location of the symbol in the file
  */
 class SymbolInformation {
   constructor(public name: string, public kind: vscode.SymbolKind, public location: Location) { }
-
-  static codec(): Codec<vscode.SymbolInformation, SymbolInformation> {
-    return Codec.from(
-      (vscodeSymbol: vscode.SymbolInformation) => SymbolInformation.fromVSCodeSymbolInformation(vscodeSymbol),
-      (symbol: SymbolInformation) => symbol.toVSCodeSymbolInformation()
-    );
-  };
 
   static fromVSCodeSymbolInformation(symbol: vscode.SymbolInformation): SymbolInformation {
     return new SymbolInformation(
@@ -227,27 +202,41 @@ class SymbolInformation {
     );
   }
 
-  toVSCodeSymbolInformation(): vscode.SymbolInformation {
+  static toVSCodeSymbolInformation(s: SymbolInformation): vscode.SymbolInformation {
     return new vscode.SymbolInformation(
-      this.name,
-      this.kind,
+      s.name,
+      s.kind,
       "",
-      this.location.toVSCodeLocation(),
+      Location.toVSCodeLocation(s.location),
     );
   }
 }
 
+export type SymbolHierarchyInput = {
+  locations: Location[],
+};
+
 // Update symbolHierarchyTool to use wrapped types
-export const symbolHierarchyTool = Tool.create<Location[], SymbolInformation[][]>(
+export const symbolHierarchyTool = Tool.create<SymbolHierarchyInput, SymbolInformation[][]>(
   "symbol_hierarchy",
-  "Finds the symbol hierarchy for one or more locations in the code",
-  detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
-  (locations) => traverse(locations, (loc) => symbolHierarchy(loc.toVSCodeLocation()).map(symbols => symbols.map(SymbolInformation.fromVSCodeSymbolInformation)))
+  "Finds and returns the symbol hierarchy for one or more locations in the code. This tool helps to understand the structure and organization of symbols (such as functions, classes, and variables) in the codebase, providing valuable context for code analysis and navigation. Locations must be known to use this tool.",
+  detectSchema({
+    locations: [Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))],
+  }),
+  ({ locations }) =>
+    traverse(locations, (loc) =>
+      symbolHierarchy(Location.toVSCodeLocation(loc))
+        .map(symbols =>
+          symbols.map(SymbolInformation.fromVSCodeSymbolInformation)
+        )
+    )
 );
 
-export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCursor)
+export const showSymbolHierarchiesAtCursor: Action<void> = sequence(currentDoc, getCursor)
   .bind(([d, c]) => symbolHierarchyTool.action(
-    [Location.fromVSCodeLocation(new vscode.Location(d.uri, c))]
+    {
+      locations: [Location.fromVSCodeLocation(new vscode.Location(d.uri, c))],
+    }
   ))
   .map(hierarchies => {
     // Display the hierarchies in a new editor
@@ -257,24 +246,24 @@ export const showSymbolHierarchiesAtCursor: Action<void> = sequence(doc, getCurs
   });
 
 
-export const referencesTool: Tool<vscode.Location, vscode.Location[]> =
-  Tool.wrap(
-    Tool.create<Location, Location[]>(
-      "references",
-      "Finds all references to a symbol at a given location",
-      detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
-      (location) => liftEditor(async (editor) => {
-        const references = await vscode.commands.executeCommand<vscode.Location[]>(
-          'vscode.executeReferenceProvider',
-          location.toVSCodeLocation().uri,
-          location.toVSCodeLocation().range.start
-        );
-        return references?.map(Location.fromVSCodeLocation) || [];
-      })
-    ),
-    Location.codec(),
-    Codec.array(Location.codec().flip()),
+//  Locations must be known to use this tool.
+export const referencesTool: Tool<Location, Location[]> =
+  Tool.create<Location, Location[]>(
+    "references",
+    "Finds and returns all references to a symbol at a given location in the codebase. This tool is useful for understanding how a particular symbol (such as a function, variable, or class) is used throughout the project, aiding in code analysis, refactoring, and dependency tracking. The location must be known to use this tool.",
+    detectSchema(Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))),
+    (location) => liftEditor(async (editor) => {
+
+      const loc = Location.toVSCodeLocation(location);
+      const references = await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeReferenceProvider',
+        loc.uri,
+        loc.range.start
+      );
+      return references?.map(Location.fromVSCodeLocation) || [];
+    })
   );
+
 
 export const nextProblemTool = Tool.create<void, DiagnosticContext>(
   "next_problem",
@@ -320,7 +309,7 @@ export const surroundingContextTool = Tool.create<SurroundingContextInput, Surro
     location: Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(10, 50))),
   }),
   ({ surroundingLines, location }) => {
-    const loc = location.toVSCodeLocation();
+    const loc = Location.toVSCodeLocation(location);
     return getDoc(loc.uri).bind(d => getSurroundingLines(d, loc.range, surroundingLines));
   }
 );
@@ -340,7 +329,54 @@ export const languageDirContext = liftEditor(async editor => editor.document.lan
 // tool to show types & signatures in cwd
 export const dirCtxTool = Tool.create<void, string>(
   "directory_ctx",
-  "Provides language-specific directory context",
+  "Provides language-specific directory context for the current workspace. This includes information about available types, function signatures, and other relevant language elements in the current working directory.",
   nullSchema,
   () => languageDirContext
+);
+
+export const cursorLocationTool = Tool.create<void, Location>(
+  "cursor_location",
+  "Retrieves the current cursor position within the active text editor. This tool returns a Location object containing the file URI and the precise cursor position (line and character).",
+  nullSchema,
+  () => sequence(getCursor, currentDoc).map(
+    ([cursor, doc]) => Location.fromVSCodeLocation(
+      new vscode.Location(doc.uri, cursor),
+    ),
+  )
+);
+
+// For both line and character, TranslateCursorInput accepts
+// an optional (none = no translation) `delta` (move by delta) or `value` (set to value)
+export type TranslateCursorInput = {
+  lineDelta?: number,
+  characterDelta?: number,
+  lineValue?: number,
+  characterValue?: number,
+};
+
+// translateCursorTool uses vscode's Position.translate to move the cursor
+// by providing line & character deltas
+export const translateCursorTool = Tool.create<TranslateCursorInput, Location>(
+  "translate_cursor",
+  "Moves the cursor position based on provided deltas or absolute values for line and character.",
+  createObjectSchema()
+    .property("lineDelta", createNumberSchema().build())
+    .property("characterDelta", createNumberSchema().build())
+    .property("lineValue", createNumberSchema().build())
+    .property("characterValue", createNumberSchema().build())
+    .build(),
+  ({ lineDelta, characterDelta, lineValue, characterValue }) =>
+    sequence(getCursor, currentDoc).map(([cursor, doc]) => {
+      let newPosition = cursor;
+      if (lineDelta !== undefined || characterDelta !== undefined) {
+        newPosition = newPosition.translate(lineDelta || 0, characterDelta || 0);
+      }
+      if (lineValue !== undefined) {
+        newPosition = new vscode.Position(lineValue, newPosition.character);
+      }
+      if (characterValue !== undefined) {
+        newPosition = new vscode.Position(newPosition.line, characterValue);
+      }
+      return Location.fromVSCodeLocation(new vscode.Location(doc.uri, newPosition));
+    })
 );

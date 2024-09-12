@@ -2,19 +2,17 @@ import * as vscode from 'vscode';
 
 import {
 	Action,
-	cancel,
 	fail,
 	lift,
 	liftEditor,
 	pure,
 	sequence
 } from './action';
-import { TextStream, decideTool, streamText } from './anthropic';
+import { TextStream, streamText } from './anthropic';
 import * as langs from './lang/lib';
 import {
 	diagnosticContextToPrompt,
-	dirCtxTool,
-	doc,
+	currentDoc,
 	getAllLines,
 	getCursor,
 	getSelection,
@@ -22,16 +20,11 @@ import {
 	getSurroundingLines,
 	languageDirContext,
 	nextProblemTool,
-	referencesTool,
-	showSymbolHierarchiesAtCursor,
-	surroundingContextTool,
 	SurroundingText,
-	symbolHierarchyTool,
 } from './navigation';
 import { CompletionType, PromptInput, createPrompt } from './prompt';
 import { Command } from './types';
-import { Tool } from './tool';
-import { Agent } from './agent';
+import { Agent, promptUserTool } from './agent';
 
 
 // Updated utility function to get either all lines or recent lines based on a parameter
@@ -42,18 +35,16 @@ const getLines = (ty: CompletionType, contextLines: number | null): Action<Surro
 	}
 
 	if (contextLines === null) {
-		return getAllLines(doc, base);
+		return getAllLines(currentDoc, base);
 	} else {
-		return doc.and(base).bind(([d, r]) => getSurroundingLines(d, r, contextLines));
+		return currentDoc.and(base).bind(([d, r]) => getSurroundingLines(d, r, contextLines));
 	}
 };
 
 // Utility function to prompt the user for input
 // Returns an Action that resolves to the user's input string or cancels if input is undefined
 const promptUser = (opts: vscode.InputBoxOptions) =>
-	liftEditor(
-		async (editor) => vscode.window.showInputBox(opts)
-	).bind(x => x === undefined ? cancel<string>() : pure(x));
+	promptUserTool.action(opts);
 
 // Utility function to prompt the user for refactoring instructions
 // Returns an Action that resolves to the user's input or cancels if no input is provided
@@ -192,7 +183,7 @@ const replaceSelectionDefinedContext = (contextLines: number | null) =>
 
 // an action which resolves the next problem then passes the surrounding 50 lines in either direction as a refactor context with additional isntructions derived from the DiagnosticContext.
 const fixNextProblem = (contextLines: number) =>
-	nextProblemTool.action().and(doc).bind(
+	nextProblemTool.action().and(currentDoc).bind(
 		([diagnostic, document]) =>
 			// take diagnostic and resolve the n lines before and after as a range to be later used in replacement
 			getSurroundingLineRanges(document, new vscode.Range(diagnostic.pos, diagnostic.pos), contextLines)
@@ -216,14 +207,6 @@ const fixNextProblem = (contextLines: number) =>
 			return bufferReplace(pure(sel), stream);
 		}
 	);
-
-
-const wip = promptUser({
-	prompt: 'Enter goal',
-	placeHolder: 'e.g., Add an optional argument & update dependencies',
-}).bind(goal => {
-	return Agent.create({ goal, }).step();
-});
 
 
 // Class representing the main application
@@ -291,7 +274,7 @@ class App {
 			{ name: 'repeat', action: this.repeat },
 
 			// development
-			{ name: 'wip', action: wip, },
+			{ name: 'wip', action: Agent.run(), },
 
 			...langs.languages.flatMap(l => l.commands),
 		];
