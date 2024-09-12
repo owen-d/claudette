@@ -260,6 +260,13 @@ const personSchema = createSchema()
   .required('firstName', 'lastName', 'age')
   .build();
 
+
+// detectSchemaTyped is a wrapper that can hint+enforce a type at
+// compile time
+export function detectSchemaTyped<T>(x: T): JSONSchema {
+  return detectSchema(x);
+}
+
 export function detectSchema(obj: any): JSONSchema {
   const schema = createSchema();
 

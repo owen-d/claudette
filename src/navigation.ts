@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
-import { Codec, createNumberSchema, createObjectSchema, detectSchema, nullSchema, Tool } from './tool';
+import { Codec, createNumberSchema, createObjectSchema, detectSchema, detectSchemaTyped, nullSchema, Tool } from './tool';
 import * as langs from './lang/lib';
 
 /*
@@ -147,16 +147,6 @@ export const fileSymbols = (uri: vscode.Uri): Action<vscode.SymbolInformation[]>
     },
   );
 
-// symbolHierarchy retrieves all the symbols overlapping the current location (generally the cursor)
-// and returns an array of symbols in that file which overlap it, sorted (ascending) by the starting offset.
-// In practice this returns a hierarchy of parent symbols encapsulating a target one.
-export const symbolHierarchy = (loc: vscode.Location) => fileSymbols(loc.uri)
-  .map(
-    (symbols) => symbols
-      .filter(s => s.location.range.contains(loc.range))
-      .sort((a, b) => a.location.range.start.compareTo(b.location.range.start)),
-  );
-
 /**
  * Location class represents a position in a file
  * We enforce static methods because Location is used in tool I/O
@@ -213,38 +203,24 @@ class SymbolInformation {
 }
 
 export type SymbolHierarchyInput = {
-  locations: Location[],
+  uris: string[],
 };
 
 // Update symbolHierarchyTool to use wrapped types
-export const symbolHierarchyTool = Tool.create<SymbolHierarchyInput, SymbolInformation[][]>(
-  "symbol_hierarchy",
-  "Finds and returns the symbol hierarchy for one or more locations in the code. This tool helps to understand the structure and organization of symbols (such as functions, classes, and variables) in the codebase, providing valuable context for code analysis and navigation. Locations must be known to use this tool.",
-  detectSchema({
-    locations: [Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(0, 0)))],
+export const symbolsInFile = Tool.create<SymbolHierarchyInput, SymbolInformation[][]>(
+  "symbols_list",
+  "For each location, find and return the symbols in said location's file. This tool helps to understand the structure and organization of symbols (such as functions, classes, and variables) in the codebase, providing valuable context for code analysis and navigation. Locations must be known to use this tool.",
+  detectSchemaTyped<SymbolHierarchyInput>({
+    uris: ['file:///usr/home'],
   }),
-  ({ locations }) =>
-    traverse(locations, (loc) =>
-      symbolHierarchy(Location.toVSCodeLocation(loc))
+  ({ uris, }) =>
+    traverse(uris, uri =>
+      fileSymbols(vscode.Uri.file(uri))
         .map(symbols =>
           symbols.map(SymbolInformation.fromVSCodeSymbolInformation)
         )
     )
 );
-
-export const showSymbolHierarchiesAtCursor: Action<void> = sequence(currentDoc, getCursor)
-  .bind(([d, c]) => symbolHierarchyTool.action(
-    {
-      locations: [Location.fromVSCodeLocation(new vscode.Location(d.uri, c))],
-    }
-  ))
-  .map(hierarchies => {
-    // Display the hierarchies in a new editor
-    const content = JSON.stringify(hierarchies, null, 2);
-    vscode.workspace.openTextDocument({ content, language: 'plaintext' })
-      .then(doc => vscode.window.showTextDocument(doc, { preview: false }));
-  });
-
 
 //  Locations must be known to use this tool.
 export const referencesTool: Tool<Location, Location[]> =

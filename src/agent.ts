@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Action, cancel, lift, liftEditor, pure } from "./action";
 import { decideTool } from "./anthropic";
-import { cursorLocationTool, dirCtxTool, nextProblemTool, referencesTool, surroundingContextTool, symbolHierarchyTool } from "./navigation";
+import { cursorLocationTool, dirCtxTool, nextProblemTool, referencesTool, surroundingContextTool, symbolsInFile, translateCursorTool } from "./navigation";
 import { createObjectSchema, createStringSchema, detectSchema, Tool } from "./tool";
 
 /** File for multi-round, agentic reasoning
@@ -71,11 +71,12 @@ export class Agent {
     const intermediates = Agent._stepMap(
       StepType.Intermediate,
       cursorLocationTool,
-      symbolHierarchyTool,
+      symbolsInFile,
       referencesTool,
       nextProblemTool,
       surroundingContextTool,
       dirCtxTool,
+      translateCursorTool,
       // internal tools 
       setPlanTool.sideEffect(
         ({ plan }) => {
@@ -119,11 +120,11 @@ export class Agent {
         const instructions = `<instructions>
 1. Review the goal and current plan (if any).
 2. If no plan exists, create one to achieve the goal.
-3. Follow the plan, updating it as needed.
+3. Follow the plan.
 4. Use the provided tools to gather information and make changes.
 5. Continually reassess and adjust the plan based on new information.
 6. When the goal is achieved, use the finish tool to complete the task.
-7. Remember to account for tool input & output schemas. They're often meant to be used together, for instance the 'cursorLocationTool' returns the location at the cursor, whose output can be sent to the 'symbolHierarchyTool' to lookup the symbols the cursor is within.
+7. Remember to account for tool input & output schemas. They're often meant to be used together, for instance the 'cursorLocationTool' returns the location at the cursor and the location data format is used as an input to other tools, or, given the surrounding context of the cursor, can be used to alter the input sent to other tools if e.g. the cursor is some lines|characters away from the location needed. Thus, tools can be sequenced together and used to expand context for each other.
 </instructions>`;
 
 
