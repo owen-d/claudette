@@ -15,7 +15,6 @@ export function success<A>(a: A): ActionResult<A> {
   return { type: 'success', value: a };
 }
 
-
 export class Action<A> {
   constructor(private readonly run: (editor: vscode.TextEditor) => Promise<ActionResult<A>>) { }
 

@@ -94,16 +94,6 @@ export class Agent {
     return [...intermediates, ...finalSteps];
   }
 
-  /** 
-   * Creates a prompt with the following information:
-   * Preamble, explaining it's a code assistant & it's task is to build a plan and ultimately solve an arbitrary goal with a set of tools
-   * the goal (if present)
-   * the plan (if present)
-   * Directory context (resolved via dirCtx tool)
-   * The past 6 message from history
-   * Detailed instructions for how to proceed:
-   * Build a plan -> follow it & continually update the plan
-   */
   private prompt(): Action<string> {
     return dirCtxTool.action()
       .map(dirCtx => {
