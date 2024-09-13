@@ -377,3 +377,16 @@ export const promptUserTool = Tool.create<vscode.InputBoxOptions, string>(
     async (editor) => vscode.window.showInputBox(opts)
   ).bind(x => x === undefined ? cancel<string>() : pure(x))
 );
+
+
+export const showTextDocumentTool = Tool.create<{ data: string }, void>(
+  'showTextDocument',
+  'Show a new text document with the given content',
+  createObjectSchema()
+    .property('data', createStringSchema().build())
+    .build(),
+  ({ data }) => liftEditor(async (editor) => {
+    const doc = await vscode.workspace.openTextDocument({ content: data });
+    await vscode.window.showTextDocument(doc);
+  })
+);

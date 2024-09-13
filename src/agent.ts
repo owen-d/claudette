@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Action, cancel, lift, liftEditor, pure } from "./action";
 import { decideTool } from "./anthropic";
-import { cursorLocationTool, dirCtxTool, nextProblemTool, referencesTool, surroundingContextTool, symbolsInFile, translateCursorTool } from "./navigation";
+import { cursorLocationTool, dirCtxTool, nextProblemTool, referencesTool, showTextDocumentTool, surroundingContextTool, symbolsInFile, translateCursorTool } from "./navigation";
 import { createObjectSchema, createStringSchema, detectSchema, Tool } from "./tool";
 
 /** File for multi-round, agentic reasoning
@@ -33,11 +33,12 @@ export class Agent {
   private maxRounds: number;
   private messageHistory: Message[];
   private plan: string = '';
+  private notes: string = '';
 
   private constructor(opts: AgentOpts) {
     this.goal = opts.goal;
     this.rounds = 0;
-    this.maxRounds = opts.maxRounds ?? 8;
+    this.maxRounds = opts.maxRounds ?? 12;
     this.messageHistory = [];
   }
 
@@ -78,6 +79,7 @@ export class Agent {
       dirCtxTool,
       translateCursorTool,
       // internal tools 
+      this.setNotesTool(),
       this.setPlanTool(),
     );
 
@@ -102,6 +104,17 @@ export class Agent {
     );
   }
 
+  private setNotesTool() {
+    return Tool.create<{ notes: string }, {}>(
+      'setNotes',
+      'Set or update notes about the current task or progress',
+      detectSchema({
+        notes: "These are some notes about the current task or progress.",
+      }),
+      ({ notes }) => { this.notes = notes; return pure({}); },
+    );
+  }
+
   private prompt(): Action<string> {
     return dirCtxTool.action()
       .map(dirCtx => {
@@ -109,6 +122,7 @@ export class Agent {
 
         const goalSection = this.goal ? `<goal>${this.goal}</goal>` : '';
         const planSection = this.plan ? `<plan>${this.plan}</plan>` : '';
+        const notesSection = this.notes ? `<notes>${this.notes}</notes>` : '';
 
         // const dirContextSection = `<context>Following is the dirContext block containing all the function signatures in the current folder:
         // <dirContext>${dirCtx}</dirContext></context>`;
@@ -121,15 +135,16 @@ export class Agent {
 3. Follow the plan.
 4. Use the provided tools to gather information and make changes.
 5. Continually reassess and adjust the plan, updating it with your progress and new information. Try to do this at least every few rounds, but only when discovering new information. For example, if a tool returns interesting information, you may wish to store that in the plan and indicate how it affects future decisions. Don't, however, keep setting the plan to the same plan that already exists.
-6. When the goal is achieved, use the finish tool to complete the task.
-7. Remember to account for tool input & output schemas. They're often meant to be used together, for instance the 'cursorLocationTool' returns the location at the cursor and the location data format is used as an input to other tools, or, given the surrounding context of the cursor, can be used to alter the input sent to other tools if e.g. the cursor is some lines|characters away from the location needed. Thus, tools can be sequenced together and used to expand context for each other.
-9. Remember to consider whether the goal is achieved after each round.
+6. Remember to account for tool input & output schemas. They're often meant to be used together, for instance the 'cursorLocationTool' returns the location at the cursor and the location data format is used as an input to other tools, or, given the surrounding context of the cursor, can be used to alter the input sent to other tools if e.g. the cursor is some lines|characters away from the location needed. Thus, tools can be sequenced together and used to expand context for each other.
+8. When you have enough information, call the 'finish' tool with a summary of your analysis. In your summary, include a (simplified if possible) description of the plan you used to achieve your goal.
+9. Remember to consider whether the goal is achieved after each round and avoid going in circles.
 </instructions>`;
 
 
         const res = `${preamble}
 ${goalSection}
 ${planSection}
+${notesSection}
 ${historySection}
 ${instructions}`;
 
@@ -151,7 +166,7 @@ ${instructions}`;
       .bind(() => this.prompt())
       .bind(prompt => decideTool(
         prompt,
-        true,
+        false,
         ...this.toolkit(),
       ))
       .sideEffect(({ tool, input, output }) => {
@@ -176,9 +191,9 @@ ${instructions}`;
         val,
       }),
     )
-      .bind(({ type }) => {
+      .bind(({ type, val }) => {
         if (type === StepType.Finished) {
-          return pure(undefined);
+          return showTextDocumentTool.action({ data: `${val}` });
         } else {
           console.log('recursing');
           return this.recurse();
@@ -228,20 +243,17 @@ type Plan = {
 };
 
 type FinishToolInput = {
-  summary?: string
+  summary: string
 };
 
 // a tool whose calling indicates the completion of an agent's work
-const finishTool = Tool.create<FinishToolInput, Step<string | undefined>>(
+const finishTool = Tool.create<FinishToolInput, string>(
   'finish',
   'Indicate that the agent has completed its task',
   createObjectSchema()
     .property('summary', createStringSchema().build())
     .build(),
-  x => pure({
-    type: StepType.Finished,
-    val: x.summary,
-  }),
+  ({ summary }) => pure(summary),
 );
 
 export const promptUserTool = Tool.create<vscode.InputBoxOptions, string>(

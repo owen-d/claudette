@@ -26,6 +26,10 @@ export class Action<A> {
     return fail<A>(message);
   }
 
+  static defer<A>(f: () => Action<A>): Action<A> {
+    return pure(undefined).bind(f);
+  }
+
   // Execute the action
   async execute(editor: vscode.TextEditor): Promise<ActionResult<A>> {
     return this.run(editor);
@@ -49,11 +53,15 @@ export class Action<A> {
     });
   }
 
-
   // Applicative apply operation (<*>) with cancellation support
   // base version
   apply<B, C>(this: Action<(a: B) => C>, action: Action<B>): Action<C> {
     return sequence(this, action).map(([f, g]) => f(g));
+  }
+
+  // m (m a) -> m a
+  join<B>(this: Action<Action<B>>): Action<B> {
+    return this.bind(a => a);
   }
 
   // Convenience method for sequencing actions
