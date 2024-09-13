@@ -37,7 +37,7 @@ export class Agent {
   private constructor(opts: AgentOpts) {
     this.goal = opts.goal;
     this.rounds = 0;
-    this.maxRounds = opts.maxRounds ?? 4;
+    this.maxRounds = opts.maxRounds ?? 8;
     this.messageHistory = [];
   }
 
@@ -78,11 +78,7 @@ export class Agent {
       dirCtxTool,
       translateCursorTool,
       // internal tools 
-      setPlanTool.sideEffect(
-        ({ plan }) => {
-          this.plan = plan;
-        }
-      ),
+      this.setPlanTool(),
     );
 
     const finalSteps = Agent._stepMap(
@@ -92,6 +88,18 @@ export class Agent {
     );
 
     return [...intermediates, ...finalSteps];
+  }
+
+  // a tool for setting or updating a plan
+  private setPlanTool() {
+    return Tool.create<Plan, {}>(
+      'setPlan',
+      'Set (create|update) a plan of steps to accomplish the given goal',
+      detectSchema({
+        plan: "To get the square of double the input, first multiply it by two then multiply that by itself.",
+      }),
+      ({ plan }) => { this.plan = plan; return pure({}); },
+    );
   }
 
   private prompt(): Action<string> {
@@ -105,16 +113,17 @@ export class Agent {
         // const dirContextSection = `<context>Following is the dirContext block containing all the function signatures in the current folder:
         // <dirContext>${dirCtx}</dirContext></context>`;
 
-        const historySection = `<history>${this.messageHistory.slice(-6).map(msg => `<message user="${msg.user}">${msg.msg}</message>`).join('')}</history>`;
+        const historySection = `<history>${this.messageHistory.slice(-6).map(msg => `<message>${JSON.stringify(msg)}</message>`).join('')}</history>`;
 
         const instructions = `<instructions>
 1. Review the goal and current plan (if any).
 2. If no plan exists, create one to achieve the goal.
 3. Follow the plan.
 4. Use the provided tools to gather information and make changes.
-5. Continually reassess and adjust the plan based on new information.
+5. Continually reassess and adjust the plan, updating it with your progress and new information. Try to do this at least every few rounds, but only when discovering new information. For example, if a tool returns interesting information, you may wish to store that in the plan and indicate how it affects future decisions. Don't, however, keep setting the plan to the same plan that already exists.
 6. When the goal is achieved, use the finish tool to complete the task.
 7. Remember to account for tool input & output schemas. They're often meant to be used together, for instance the 'cursorLocationTool' returns the location at the cursor and the location data format is used as an input to other tools, or, given the surrounding context of the cursor, can be used to alter the input sent to other tools if e.g. the cursor is some lines|characters away from the location needed. Thus, tools can be sequenced together and used to expand context for each other.
+9. Remember to consider whether the goal is achieved after each round.
 </instructions>`;
 
 
@@ -142,33 +151,31 @@ ${instructions}`;
       .bind(() => this.prompt())
       .bind(prompt => decideTool(
         prompt,
+        true,
         ...this.toolkit(),
       ))
       .sideEffect(({ tool, input, output }) => {
         this.messageHistory.push(
           {
-            user: 'user',
-            msg: JSON.stringify(input),
-          },
-          {
             user: 'assistant',
             tool: tool.name,
-            msg: JSON.stringify(output)
+            msg: "tool called",
+            input,
+            output: output.val,
           },
         );
       });
   }
 
   private recurse(): Action<void> {
-    const a = this.step().map(
+    return this.step().map(
       ({ tool, input, output: { type, val } }) => ({
         type,
         tool: tool.name,
         input,
         val,
       }),
-    );
-    return continueAction(a)
+    )
       .bind(({ type }) => {
         if (type === StepType.Finished) {
           return pure(undefined);
@@ -184,52 +191,26 @@ ${instructions}`;
       prompt: 'Enter goal',
       placeHolder: 'e.g., Add an optional argument & update dependencies',
     })
-      .bind(goal => {
-        let agent = Agent.create({ goal, });
-        return agent.recurse()
-          .sideEffect(() => {
-            console.log("finished!");
-            console.log(agent.goal);
-            console.log(agent.messageHistory);
-          });
+      .bind(Agent.runWithGoal);
+  }
+
+  static runWithGoal(goal: string): Action<void> {
+    let agent = Agent.create({ goal, });
+    return agent.recurse()
+      .sideEffect(() => {
+        console.log("finished!");
+        console.log(agent.goal);
+        console.log(agent.messageHistory);
       });
   }
 }
 
-
-// prompt the user if they want to coninue based on the result
-function continueAction<A extends Step<any>>(a: Action<A>): Action<A> {
-  return a.bind(result =>
-    lift(async () => {
-      // Show the result in a buffer
-      await vscode.window.showTextDocument(vscode.Uri.parse(`untitled:result.json`), { preview: false })
-        .then(editor =>
-          editor.edit(editBuilder => {
-            // to show the str forms of enums
-            const mapped = {
-              ...result,
-              type: StepType[result.type],
-            };
-            editBuilder.insert(new vscode.Position(0, 0), JSON.stringify(mapped, null, 2));
-          })
-        );
-    }).bind(() =>
-      promptUserTool.action({
-        prompt: `Operation completed. Continue?`,
-        placeHolder: 'yes/no, y/n ',
-      }).map(answer => answer.toLowerCase().startsWith('y'))
-    ).bind(shouldContinue =>
-      shouldContinue ? pure(result) : cancel<A>()
-    )
-  );
-}
-
-
-
 type Message = {
   tool?: string,
   user: 'system' | 'user' | 'assistant',
-  msg: string,
+  msg?: string,
+  input?: any,
+  output?: any,
 };
 
 type Step<T> = {
@@ -261,16 +242,6 @@ const finishTool = Tool.create<FinishToolInput, Step<string | undefined>>(
     type: StepType.Finished,
     val: x.summary,
   }),
-);
-
-// a tool for setting or updating a plan
-const setPlanTool = Tool.create<Plan, Plan>(
-  'setPlan',
-  'Set (create|update) a plan of steps to accomplish the given goal',
-  detectSchema({
-    plan: "To get the square of double the input, first multiply it by two then multiply that by itself.",
-  }),
-  pure,
 );
 
 export const promptUserTool = Tool.create<vscode.InputBoxOptions, string>(

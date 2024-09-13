@@ -1,7 +1,9 @@
+import * as vscode from 'vscode';
 import Anthropic from '@anthropic-ai/sdk';
 import { TextBlock } from '@anthropic-ai/sdk/resources/messages.mjs';
 import { Tool } from './tool';
-import { Action, fail, lift, pure } from './action';
+import { Action, cancel, fail, lift, pure } from './action';
+import { promptUserTool } from './navigation';
 
 
 
@@ -58,6 +60,7 @@ type UnwrapTool<T> = T extends Tool<infer I, infer O> ? { tool: Tool<I, O>, inpu
 
 export function decideTool<T extends Tool<any, any>[]>(
   prompt: string,
+  interactive: boolean,
   ...tools: [...T]
 ): Action<UnwrapTool<T[number]>> {
 
@@ -125,13 +128,66 @@ export function decideTool<T extends Tool<any, any>[]>(
         return fail(`Chosen tool ${call.name} not found in provided tools`);
       }
 
-      console.log(`calling tool ${call.name} with ${JSON.stringify(call.input)}`);
-
-      return chosen.action(call.input)
+      let execute = (input: any) => chosen.action(input)
         .map(output => ({
-          input: call.input,
+          input,
           tool: chosen,
           output,
         }) as UnwrapTool<T[number]>);
+
+
+      if (interactive) {
+        return approve<any, UnwrapTool<T[number]>>(
+          call.input,
+          input => ({ tool: chosen.name, input, }),
+          execute,
+          ({ output }) => ({ tool: chosen.name, output }),
+        );
+      }
+      return execute(call.input);
     });
+}
+
+
+// prompt the user if they want to coninue based on the result
+function approve<I, O>(
+  input: I,
+  // used to format the tool input into something more manageable
+  fmtI: (_: I) => any,
+  f: (_: I) => Action<O>,
+  // used to format the tool resp into something more manageable
+  fmtO: (_: O) => any,
+): Action<O> {
+
+  // subroutine
+  const requestApproval = (
+    x: any,
+    fmt: (_: any) => any,
+    msg?: string,
+  ) => lift(async () => {
+    // Show the result in a buffer
+    await vscode.window.showTextDocument(vscode.Uri.parse(`untitled:result.json`), { preview: false })
+      .then(editor =>
+        editor.edit(editBuilder => {
+          // to show the str forms of enums
+          editBuilder.insert(
+            new vscode.Position(0, 0),
+            JSON.stringify(
+              {
+                value: fmt(x),
+                msg,
+              },
+              null, 2,
+            ),
+          );
+        })
+      );
+  }).bind(() => promptUserTool.action({
+    prompt: `Operation completed. Continue? escape cancels, enter accepts`,
+    placeHolder: 'ret',
+  })).map(() => x);
+
+  return requestApproval(input, fmtI, "input") // approve input
+    .bind(f) // run
+    .bind(o => requestApproval(o, fmtO, "output").map(() => o)); // approve output
 }

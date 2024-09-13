@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure } from "./action";
-import { Codec, createNumberSchema, createObjectSchema, detectSchema, detectSchemaTyped, nullSchema, Tool } from './tool';
+import { Action, liftEditor, ActionResult, cancellation, success, traverse, lift, sequence, pure, cancel } from "./action";
+import { Codec, createNumberSchema, createObjectSchema, createStringSchema, detectSchema, detectSchemaTyped, nullSchema, Tool } from './tool';
 import * as langs from './lang/lib';
 
 /*
@@ -213,13 +213,16 @@ export const symbolsInFile = Tool.create<SymbolHierarchyInput, SymbolInformation
   detectSchemaTyped<SymbolHierarchyInput>({
     uris: ['file:///usr/home'],
   }),
-  ({ uris, }) =>
-    traverse(uris, uri =>
+  x => {
+    let uris = x.uris;
+    return traverse(uris, uri =>
       fileSymbols(vscode.Uri.file(uri))
         .map(symbols =>
           symbols.map(SymbolInformation.fromVSCodeSymbolInformation)
         )
     )
+  }
+
 );
 
 //  Locations must be known to use this tool.
@@ -355,4 +358,16 @@ export const translateCursorTool = Tool.create<TranslateCursorInput, Location>(
       }
       return Location.fromVSCodeLocation(new vscode.Location(doc.uri, newPosition));
     })
+);
+
+export const promptUserTool = Tool.create<vscode.InputBoxOptions, string>(
+  'promptUser',
+  'Prompt the user for input',
+  createObjectSchema()
+    .property('prompt', createStringSchema().build())
+    .property('placeHolder', createStringSchema().build())
+    .build(),
+  opts => liftEditor(
+    async (editor) => vscode.window.showInputBox(opts)
+  ).bind(x => x === undefined ? cancel<string>() : pure(x))
 );
