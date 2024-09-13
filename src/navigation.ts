@@ -275,21 +275,27 @@ export const nextProblemTool = Tool.create<void, DiagnosticContext>(
 );
 
 export type SurroundingContextInput = {
-  surroundingLines: number,
-  location: Location,
+  locations: Array<{
+    surroundingLines: number,
+    location: Location,
+  }>,
 };
 
-// Tool to resolve the surrounding `n` lines from a location.
-export const surroundingContextTool = Tool.create<SurroundingContextInput, SurroundingText>(
+// Tool to resolve the surrounding `n` lines from multiple locations.
+export const surroundingContextTool = Tool.create<SurroundingContextInput, SurroundingText[]>(
   "surrounding_ctx",
-  "Extracts the surrounding context of a given location",
+  "Extracts the surrounding context of given locations",
   detectSchema({
-    surroundingLines: 10,
-    location: Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(10, 50))),
+    locations: [{
+      surroundingLines: 10,
+      location: Location.fromVSCodeLocation(new vscode.Location(vscode.Uri.parse('file:///usr/home'), new vscode.Position(10, 50))),
+    }],
   }),
-  ({ surroundingLines, location }) => {
-    const loc = Location.toVSCodeLocation(location);
-    return getDoc(loc.uri).bind(d => getSurroundingLines(d, loc.range, surroundingLines));
+  ({ locations }) => {
+    return traverse(locations, ({ surroundingLines, location }) => {
+      const loc = Location.toVSCodeLocation(location);
+      return getDoc(loc.uri).bind(d => getSurroundingLines(d, loc.range, surroundingLines));
+    });
   }
 );
 
