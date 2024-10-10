@@ -12,7 +12,14 @@ export const findDefinitions: Action<string> = liftEditor(async (editor) => {
   const currentFolder = path.dirname(currentFilePath);
 
   const goFiles = await findGoFiles(currentFolder);
-  const definitions = await extractGoDefinitions(goFiles);
+  const openedGoFiles = await findOpenedGoFiles();
+  const allGoFiles = [
+    ...new Set(
+      goFiles.concat(openedGoFiles).map(uri => uri.fsPath),
+    )
+  ].map(fsPath => vscode.Uri.file(fsPath));
+
+  const definitions = await extractGoDefinitions(allGoFiles);
 
   return formatDefinitions(definitions);
 });
@@ -47,6 +54,14 @@ async function findGoFiles(folderPath: string, maxDepth: number = 0): Promise<vs
     maxDepth === 0 ? undefined : maxDepth
   );
   return findFiles;
+}
+
+// finds go files opened in editor, regardless of location
+async function findOpenedGoFiles(): Promise<vscode.Uri[]> {
+  const openedFiles = vscode.workspace.textDocuments
+    .filter(doc => doc.languageId === 'go')
+    .map(doc => doc.uri);
+  return openedFiles;
 }
 
 async function extractGoDefinitions(fileUris: vscode.Uri[]): Promise<GoDefinition[]> {
