@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { liftEditor, pure, Action } from '../action';
+import { findFiles } from './utils';
+
+interface GoDefinitionsByFile {
+  file: string;
+  defs: GoDefinition[];
+}
 
 interface GoDefinition {
   snippet: string;
@@ -13,15 +19,13 @@ export const findDefinitions: Action<string> = liftEditor(async (editor) => {
 
   const goFiles = await findGoFiles(currentFolder);
   const openedGoFiles = await findOpenedGoFiles();
-  const allGoFiles = [
-    ...new Set(
-      goFiles.concat(openedGoFiles).map(uri => uri.fsPath),
-    )
-  ].map(fsPath => vscode.Uri.file(fsPath));
 
-  const definitions = await extractGoDefinitions(allGoFiles);
+  // create a list of all files by deduping goFiles and openedGoFiles,
+  // deduping them by the `fsPath` property 
+  const allFiles = [...new Map([...goFiles, ...openedGoFiles].map(file => [file.fsPath, file])).values()];
 
-  return formatDefinitions(definitions);
+  const defsByFile = await extractGoDefinitions(allFiles);
+  return formatDefinitionsByFile(defsByFile);
 });
 
 export const showDefinitions: Action<void> = findDefinitions.bind(
@@ -48,12 +52,7 @@ export const lang = {
 };
 
 async function findGoFiles(folderPath: string, maxDepth: number = 0): Promise<vscode.Uri[]> {
-  const findFiles = await vscode.workspace.findFiles(
-    new vscode.RelativePattern(folderPath, '**/*.go'),
-    null,
-    maxDepth === 0 ? undefined : maxDepth
-  );
-  return findFiles;
+  return findFiles(folderPath, '*.go', maxDepth);
 }
 
 // finds go files opened in editor, regardless of location
@@ -64,8 +63,8 @@ async function findOpenedGoFiles(): Promise<vscode.Uri[]> {
   return openedFiles;
 }
 
-async function extractGoDefinitions(fileUris: vscode.Uri[]): Promise<GoDefinition[]> {
-  const definitions: GoDefinition[] = [];
+async function extractGoDefinitions(fileUris: vscode.Uri[]): Promise<GoDefinitionsByFile[]> {
+  const definitionsByFile: GoDefinitionsByFile[] = [];
 
   for (const uri of fileUris) {
     const document = await vscode.workspace.openTextDocument(uri);
@@ -75,13 +74,19 @@ async function extractGoDefinitions(fileUris: vscode.Uri[]): Promise<GoDefinitio
     );
 
     if (symbols) {
+      const definitions: GoDefinition[] = [];
       for (const symbol of symbols) {
         definitions.push(await extractDefinitionFromSymbol(symbol, document));
       }
+
+      definitionsByFile.push({
+        file: uri.fsPath,
+        defs: definitions
+      });
     }
   }
 
-  return definitions;
+  return definitionsByFile;
 }
 
 async function extractDefinitionFromSymbol(
@@ -140,7 +145,6 @@ function extractSnippet(symbol: vscode.SymbolInformation, document: vscode.TextD
   );
 
   const lines = document.getText(extendedRange).split('\n');
-  const codeLines = lines.filter(line => !line.trim().startsWith('//'));
 
   switch (symbol.kind) {
     case vscode.SymbolKind.Class:
@@ -191,6 +195,16 @@ function extractOtherDefinition(lines: string[]): string {
 
 function formatDefinitions(definitions: GoDefinition[]): string {
   return definitions.map(def => formatDefinition(def, 0)).join('\n');
+}
+
+// adds a comment header with `Source: $File` for each set of files
+function formatDefinitionsByFile(files: GoDefinitionsByFile[]): string {
+  return files.map(file => [
+    `// <Source file="${file.file}">`,
+    formatDefinitions(file.defs),
+    `// </Source>`,
+  ].join('\n'),
+  ).join('\n');
 }
 
 function formatDefinition(def: GoDefinition, indentLevel: number = 0): string {

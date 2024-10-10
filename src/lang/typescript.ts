@@ -2,7 +2,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
-import { liftEditor, pure } from '../action';
+import { findFiles } from './utils';
+import { Action, liftEditor, pure } from '../action';
+
+interface TypescriptDefinitionsByFile {
+  file: string;
+  defs: TypeScriptDefinition[];
+}
 
 interface TypeScriptDefinition {
   kind: string;
@@ -12,17 +18,21 @@ interface TypeScriptDefinition {
   methods?: TypeScriptDefinition[];
 }
 
-export const findDefinitions = liftEditor(async (editor) => {
+
+export const findDefinitions: Action<string> = liftEditor(async (editor) => {
   const currentFilePath = editor.document.uri.fsPath;
   const currentFolder = path.dirname(currentFilePath);
 
   const tsFiles = await findTypeScriptFiles(currentFolder);
-  const definitions = await extractTypeScriptDefinitions(tsFiles);
+  const openedTsFiles = await findOpenedTypeScriptFiles();
 
-  // Display the definitions in a new editor
-  return formatDefinitions(definitions);
+  // create a list of all files by deduping goFiles and openedGoFiles,
+  // deduping them by the `fsPath` property 
+  const allFiles = [...new Map([...tsFiles, ...openedTsFiles].map(file => [file.fsPath, file])).values()];
+
+  const defsByFile = await extractTypeScriptDefinitions(allFiles);
+  return formatDefinitionsByFile(defsByFile);
 });
-
 
 // show definitions
 export const showDefinitions = findDefinitions.bind(
@@ -49,42 +59,30 @@ export const lang = {
 };
 
 // findTypescriptFiles optionally supports a maxDepth param (0, default means only specified dir)
-async function findTypeScriptFiles(folderPath: string, maxDepth: number = 0): Promise<string[]> {
-  const files: string[] = [];
-  const queue: { path: string; depth: number }[] = [{ path: folderPath, depth: 0 }];
-
-  while (queue.length > 0) {
-    const { path: currentPath, depth } = queue.shift()!;
-
-    if (depth > maxDepth) continue;
-
-    const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(currentPath));
-
-    for (const [name, type] of entries) {
-      const fullPath = path.join(currentPath, name);
-
-      if (type === vscode.FileType.File && name.endsWith('.ts') && !name.endsWith('.test.ts')) {
-        files.push(fullPath);
-      } else if (type === vscode.FileType.Directory) {
-        queue.push({ path: fullPath, depth: depth + 1 });
-      }
-    }
-  }
-
-  return files;
+async function findTypeScriptFiles(folderPath: string, maxDepth: number = 0): Promise<vscode.Uri[]> {
+  return findFiles(folderPath, '.ts', maxDepth);
 }
 
-async function extractTypeScriptDefinitions(filePaths: string[]): Promise<TypeScriptDefinition[]> {
-  const definitions: TypeScriptDefinition[] = [];
+async function findOpenedTypeScriptFiles(): Promise<vscode.Uri[]> {
+  const openedFiles = vscode.workspace.textDocuments
+    .filter(doc => doc.languageId === 'typescript')
+    .map(doc => doc.uri);
+  return openedFiles;
+}
 
-  for (const filePath of filePaths) {
-    const fileContent = await fs.promises.readFile(filePath, 'utf-8');
+async function extractTypeScriptDefinitions(fileUris: vscode.Uri[]): Promise<TypescriptDefinitionsByFile[]> {
+  const definitionsByFile: TypescriptDefinitionsByFile[] = [];
+
+  for (const uri of fileUris) {
+    const fileContent = await fs.promises.readFile(uri.fsPath, 'utf-8');
     const sourceFile = ts.createSourceFile(
-      filePath,
+      uri.fsPath,
       fileContent,
       ts.ScriptTarget.Latest,
       true
     );
+
+    const definitions: TypeScriptDefinition[] = [];
 
     ts.forEachChild(sourceFile, node => {
       let def = extractDefinition(node, sourceFile);
@@ -92,9 +90,11 @@ async function extractTypeScriptDefinitions(filePaths: string[]): Promise<TypeSc
         definitions.push(def);
       }
     });
+
+    definitionsByFile.push({ file: uri.fsPath, defs: definitions });
   }
 
-  return definitions;
+  return definitionsByFile;
 }
 
 function extractDefinition(node: ts.Node, sourceFile: ts.SourceFile): TypeScriptDefinition | null {
@@ -177,6 +177,15 @@ function getNodeComment(node: ts.Node, sourceFile: ts.SourceFile): string | unde
 
 function formatDefinitions(definitions: TypeScriptDefinition[]): string {
   return definitions.map(def => formatDefinition(def, 0)).join('\n\n');
+}
+
+// adds a comment header with `Source: $File` for each set of files
+function formatDefinitionsByFile(files: TypescriptDefinitionsByFile[]): string {
+  return files.map(file => [
+    `// <Source file="${file.file}">`,
+    formatDefinitions(file.defs),
+    `// </Source>`,
+  ].join('\n')).join('\n');
 }
 
 function formatDefinition(def: TypeScriptDefinition, indentLevel: number = 0): string {
