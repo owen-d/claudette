@@ -274,7 +274,8 @@ class App {
 			{ name: 'repeat', action: this.repeat },
 
 			// development
-			{ name: 'wip', action: Action.defer(() => Agent.runWithGoal('find all references to the cancellation function')), },
+			// { name: 'wip', action: Action.defer(() => Agent.runWithGoal('find all references to the cancellation function')), },
+			{ name: 'wip', action: Action.fail('prevented'), },
 
 			...langs.languages.flatMap(l => l.commands),
 		];
